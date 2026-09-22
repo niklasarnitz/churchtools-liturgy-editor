@@ -184,17 +184,13 @@ onMounted(() => { void load().catch(() => undefined); });
 
 <template>
     <div class="min-h-screen bg-slate-50 text-slate-900">
-        <header class="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 shadow-sm lg:px-8">
-            <div class="flex items-center gap-3"><span class="flex size-10 items-center justify-center rounded-xl bg-accent-b-bright text-xl text-white">✝</span><div><strong class="block text-sm font-semibold tracking-tight">Liturgie-Editor</strong><small class="block text-xs text-slate-500">ChurchTools Authoring Layer</small></div></div>
-            <div class="flex items-center gap-2 text-sm font-medium text-slate-600"><span class="size-2 rounded-full bg-accent-b-bright"></span>{{ extensionPoint === 'admin' ? 'Administration' : 'Hauptmodul' }}</div>
-        </header>
-        <div class="mx-auto flex min-h-[calc(100vh-73px)] max-w-[1600px] flex-col lg:flex-row">
+        <div class="flex min-h-[calc(100vh-73px)] flex-col lg:flex-row">
             <aside class="hidden w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-7 lg:flex" aria-label="Modulnavigation">
                 <div class="mb-7"><span class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Gemeindeleben</span><h1 class="mt-2 text-2xl font-bold tracking-tight">Gottesdienst</h1><p class="mt-2 text-sm leading-6 text-slate-500">Liturgie vorbereiten und als nativen ChurchTools-Ablauf nutzen.</p></div>
                 <nav class="flex flex-wrap gap-2 lg:flex-col">
                     <button v-for="item in sectionItems" :key="item.key" type="button" :class="['flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors', activeSection === item.key ? 'bg-accent-b-pale text-accent-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900']" @click="activeSection = item.key; selectedEvent = undefined"><Icon :icon="item.icon" size="S" /><span>{{ item.label }}</span></button>
                 </nav>
-                <div class="mt-auto hidden space-y-2 pt-8 text-xs text-slate-500 lg:block"><span class="flex items-center gap-2"><span class="size-2 rounded-full" :class="workspace.isOnline ? 'bg-emerald-500' : workspace.apiConfigured ? 'bg-red-500' : 'bg-amber-500'"></span>{{ workspace.isOnline ? 'Mit ChurchTools verbunden' : workspace.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Vorschau ohne Verbindung' }}</span><span class="block">v0.1 · Ressourcen v1</span></div>
+                <div class="mt-auto hidden space-y-2 pt-8 text-xs text-slate-500 lg:block"><span class="flex items-center gap-2"><span class="size-2 rounded-full" :class="workspace.isOnline ? 'bg-emerald-500' : workspace.apiConfigured ? 'bg-red-500' : 'bg-amber-500'"></span>{{ workspace.isOnline ? 'Mit ChurchTools verbunden' : workspace.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Vorschau ohne Verbindung' }}</span><span class="block">Liturgie-Editor v0.1</span></div>
             </aside>
 
             <main class="min-w-0 flex-1 p-5 lg:p-9">
@@ -225,7 +221,7 @@ onMounted(() => { void load().catch(() => undefined); });
                         <div v-else class="grid gap-4">
                             <Card v-for="event in workspace.events" :key="event.id" class="!p-0">
                                 <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center"><div class="flex shrink-0 flex-col border-b border-slate-200 pb-4 sm:w-24 sm:border-b-0 sm:border-r sm:pb-0"><strong class="text-lg font-bold">{{ formatDate(event.startDate).split(' ')[0] }}</strong><span class="text-sm text-slate-500">{{ formatDate(event.startDate).replace(`${formatDate(event.startDate).split(' ')[0]} `, '') }}</span></div>
-                                <div class="min-w-0 flex-1"><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">{{ event.calendar?.name ?? 'Gottesdienst' }}</div><h3 class="mt-1 text-lg font-semibold">{{ event.name }}</h3><p class="mt-1 text-sm text-slate-500">{{ new Date(event.startDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }} Uhr · {{ event.isCanceled ? 'Abgesagt' : 'Geplant' }}</p></div>
+                                <div class="min-w-0 flex-1"><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">{{ event.calendar?.title ?? 'Gottesdienst' }}</div><h3 class="mt-1 text-lg font-semibold">{{ event.name }}</h3><p class="mt-1 text-sm text-slate-500">{{ new Date(event.startDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }} Uhr · {{ event.isCanceled ? 'Abgesagt' : 'Geplant' }}</p></div>
                                 <div class="flex items-center justify-between gap-3 sm:flex-col sm:items-end"><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ eventStatus(event) }}</span><Button :label="selectedEvent?.id === event.id ? 'Bearbeiten' : 'Liturgie erstellen'" icon="fas fa-arrow-right" size="S" @click="openService(event)" /></div></div>
                             </Card>
                         </div>

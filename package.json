@@ -1,18 +1,29 @@
 {
-    "name": "extension-boilerplate",
+    "name": "liturgy-editor",
     "private": true,
     "version": "0.0.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "preview": "vite preview",
         "deploy": "npm run build && node scripts/package.js"
     },
     "devDependencies": {
         "@churchtools/churchtools-client": "^1.4.0",
+        "@tailwindcss/vite": "^4.3.3",
         "@types/node": "^24.3.0",
+        "@vitejs/plugin-vue": "^6.0.9",
+        "tailwindcss": "^4.3.3",
         "typescript": "^5.9.2",
-        "vite": "^7.1.2"
+        "vite": "^7.1.2",
+        "vitest": "^3.2.7"
+    },
+    "dependencies": {
+        "@churchtools/extension-points": "github:ChurchTools/churchtools-extension-points#master",
+        "@churchtools/styleguide": "file:../../work/churchtools/frontend-packages/styleguide",
+        "vue": "^3.5.43"
     }
 }

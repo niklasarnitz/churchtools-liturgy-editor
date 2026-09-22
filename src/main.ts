@@ -1,34 +1,30 @@
-import type { Person } from './utils/ct-types';
+import { createApp } from 'vue';
+import '@churchtools/styleguide/style';
+import '@churchtools/styleguide-fonts';
+import '@churchtools/fontawesome-pro/css/all.css';
+import ctPlugin from '@churchtools/styleguide-plugin';
+import './styles/tailwind.css';
 import { churchtoolsClient } from '@churchtools/churchtools-client';
+import App from './App.vue';
+import { readRuntimeExtensionPoint } from './ui/context';
 
-// only import reset.css in development mode to keep the production bundle small and to simulate CT environment
-if (import.meta.env.MODE === 'development') {
-    import('./utils/reset.css');
+declare global {
+    interface Window { settings?: { base_url?: string; extensionPoint?: string; extension_point?: string }; }
 }
 
-declare const window: Window &
-    typeof globalThis & {
-        settings: {
-            base_url?: string;
-        };
-    };
-
 const baseUrl = window.settings?.base_url ?? import.meta.env.VITE_BASE_URL;
-churchtoolsClient.setBaseUrl(baseUrl);
+if (baseUrl) churchtoolsClient.setBaseUrl(baseUrl);
 
 const username = import.meta.env.VITE_USERNAME;
 const password = import.meta.env.VITE_PASSWORD;
 if (import.meta.env.MODE === 'development' && username && password) {
-    await churchtoolsClient.post('/login', { username, password });
+    try { await churchtoolsClient.post('/login', { username, password }); } catch { /* Preview mode handles an unavailable API. */ }
 }
 
-const KEY = import.meta.env.VITE_KEY;
-export { KEY };
+export const KEY = import.meta.env.VITE_KEY || 'liturgy-editor';
+const extensionPoint = readRuntimeExtensionPoint();
+const emitNotification = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    window.dispatchEvent(new CustomEvent('churchtools:notification:show', { detail: { message, type, duration: 5000 } }));
+};
 
-const user = await churchtoolsClient.get<Person>(`/whoami`);
-
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div style="display: flex; place-content: center; place-items: center; height: 100vh;">
-    <h1>Welcome ${[user.firstName, user.lastName].join(' ')}</h1>
-  </div>
-`;
+createApp(App, { extensionPoint, baseUrl, emitNotification }).use(ctPlugin).mount('#app');

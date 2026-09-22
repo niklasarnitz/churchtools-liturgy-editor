@@ -1,0 +1,3 @@
+@import '../utils/reset.css' layer(base);
+@import '@churchtools/styleguide/tailwind';
+@source '../**/*.{vue,ts}';

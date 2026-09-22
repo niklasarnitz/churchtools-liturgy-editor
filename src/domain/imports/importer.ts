@@ -52,6 +52,10 @@ export class HymnalImporter {
         const operationId = options.operationId ?? `${hymnal.id}:${hymnal.version}`;
         const loaded = await this.repository.load(hymnal.id);
         const state = this.prepareState(loaded, hymnal, operationId, now());
+        // Prove that operation metadata is writable before the first native
+        // category or Song is created. Otherwise a user with Song rights but
+        // without Custom-Module data rights could leave unmapped native data.
+        await this.repository.save(state);
         const categoryId = await this.resolveCategory(hymnal, options.categoryId, options.categoryName);
         state.status = 'running';
         state.total = hymnal.songs.length;

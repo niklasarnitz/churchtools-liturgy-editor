@@ -6,9 +6,9 @@ Ablaufplan-Einträge bleiben native ChurchTools-Entitäten. Eigene Daten werden
 nur für Ressourcen-Metadaten, Import-Mappings, Vorlagenversionen, Managed-State
 und Benutzereinstellungen verwendet.
 
-Der aktuelle Stand ist ein buildbares Domain-/Adapter-MVP mit Demo-Ressourcen.
-Die tägliche Main-/Admin-Oberfläche und die Live-Instanzprüfung sind noch
-separate Abnahmeschritte (siehe [bekannte Gates](#bekannte-restgates)).
+Der aktuelle Stand ist eine gemountete Vue-Main-/Admin-Oberfläche auf einem
+buildbaren Domain-/Adapter-MVP mit Demo-Ressourcen. Die Live-Instanzprüfung und
+der interaktive ChurchTools-Host-Smoke-Test bleiben separate Abnahmeschritte.
 
 ## Lokale Entwicklung
 
@@ -31,6 +31,15 @@ zulassen. Safari benötigt bei Cross-Origin-Cookies meist einen HTTPS-Devserver
 und einen Vite-Proxy. Zugangsdaten gehören ausschließlich in die lokale,
 ignorierte `.env`; sie dürfen weder committed noch in ein Extension-Bundle
 gelangen.
+
+### Template-Reset und lokale Styles
+
+Der Reset aus dem offiziellen Boilerplate (`src/utils/reset.css`) bleibt als
+Template-Datei unverändert. Er wird produktiv über `src/styles/tailwind.css`
+als erste Base-Layer importiert; `src/main.ts` importiert diese Styles vor dem
+Vue-Mount. Dadurch gilt der Reset auch in der eingebetteten Extension und
+nicht nur im Development-Modus. Die ChurchTools-Tailwind- und Styleguide-
+Quellen bleiben die maßgebliche Komponenten-/Tokenquelle.
 
 ## Konfiguration
 
@@ -156,6 +165,13 @@ für die installierten Liturgie-Ressourcen. Das Kirchenjahresprofil `ekd` liefer
 AT-Lesung, Epistel, Evangelium und Predigttext aus den Kalender-ICS-Dateien;
 `lutherisch` ist dafür kein gültiger Profilwert mehr.
 
+Die Application unterstützt dafür einen optionalen `deps.lectionary`-Port
+(`source` oder `url` + Client) in `LiturgyEditorApplication`. Aktuell wird
+dieser Port in `src/ui/useWorkspace.ts` noch nicht aus
+`VITE_LECTIONAR_API_URL` verdrahtet; die UI nutzt deshalb nur lokale Demo-
+Lektionare. Das ist ein konkreter Integrations-Restpunkt, kein stiller
+Fallback auf eine fremde Datenquelle.
+
 ## ChurchTools-Anbindung
 
 `ChurchToolsClientAdapter` kapselt den offiziellen
@@ -170,6 +186,17 @@ Native Ziele:
   Items; Song-Items verwenden `arrangementId`;
 - Extension-State: Custom-Module-Kategorien/-Werte als JSON, nie als zweite
   Song- oder Agenda-Datenbank.
+
+### Event-Abfrage: verifizierter OpenAPI-Vertrag
+
+Die lokale Primärquelle `../../work/churchtools/docs/openApi/openapi.yaml`
+definiert `DirectionParameter` ausschließlich als `forward | backward` (Default
+`forward`). Die Extension verwendet für offene kommende Abfragen `from` +
+`direction: 'forward'` + `limit`/`page`. Für einen explizit begrenzten Zeitraum
+verwendet sie `from` + `to` ohne `direction`, `page` oder `limit`.
+ChurchTools dokumentiert ausdrücklich: Bei `from` + `direction` wird `to`
+ignoriert; bei `from` + `to` werden `page` und `limit` ignoriert. Die
+Anwendungs-Tests prüfen beide Queryformen an `getUpcomingServices`.
 
 Ein geplanter Ablauf wird zuerst als abstrakte normalisierte Agenda gerendert.
 Erst der ChurchTools-Adapter schreibt native Items. `ManagedAgenda` speichert
@@ -241,6 +268,13 @@ Die Tests decken statische Registry-Referenzen, Template-/Slot-Auflösung,
 deterministische Agenda-Erzeugung, Import-Idempotenz, Managed-State und
 Reconciliation ab. `src/data/resources.test.ts` ist der Contract-Test für
 IDs, Versionen, Organisationen, Querverweise und eindeutige Hymnal-Song-IDs.
+
+Am 22.09.2026 wurde der Browser-Smoke read-only vorbereitet: In der aktuellen
+Computer-Use-Umgebung waren keine Browser-Provider oder Browser-Tabs verfügbar;
+deshalb gibt es keinen interaktiven Browser-/Host-Nachweis. Der vorhandene
+Dev-HTTP-/Bundle-Nachweis bestätigt weiterhin, dass `src/main.ts` den
+produktiven Reset lädt und das erzeugte Bundle weder `require("axios")` noch
+`axios-logger` enthält. Der echte ChurchTools-Host-Smoke bleibt offen.
 
 Für eine echte MVP-Abnahme fehlen zusätzlich Live-Gates:
 

@@ -8,7 +8,7 @@ export const organizations = [
         name: 'Evangelische Landeskirche in Baden',
         shortName: 'EKiBa',
         language: 'de',
-        hymnalIds: ['eg-baden-demo'],
+        hymnalIds: ['eg-baden', 'eg-baden-demo'],
         liturgyIds: ['baden-predigtgottesdienst-demo'],
         lectionaryIds: ['demo-minimal'],
     },

@@ -18,6 +18,11 @@ export type UninstallCandidate = {
     churchToolsSongId: number;
 };
 
+export type HymnalUsageCoverage = {
+    complete: boolean;
+    reason?: string;
+};
+
 export type HymnalUninstallPlan = {
     hymnalId: string;
     dryRun: true;
@@ -39,6 +44,11 @@ export type HymnalUninstallState = {
 
 export interface HymnalUsageChecker {
     isSongUsed(songId: number): Promise<boolean>;
+    /**
+     * Returns whether the checker has inspected the complete event universe.
+     * Implementations which cannot prove this must return `complete: false`.
+     */
+    getCoverage?(): Promise<HymnalUsageCoverage>;
 }
 
 export class HymnalUninstaller {
@@ -85,7 +95,7 @@ export class HymnalUninstaller {
         hymnalId: string,
         options: { otherStates?: readonly HymnalImportState[]; now?: () => string } = {},
     ): Promise<HymnalUninstallState> {
-        const state = await this.repository.load(hymnalId);
+        let state = await this.repository.load(hymnalId);
         if (!state) {
             return {
                 operationId: `uninstall:${hymnalId}`,
@@ -100,22 +110,70 @@ export class HymnalUninstaller {
         const plan = await this.dryRun(hymnalId, options.otherStates);
         const timestamp = options.now ?? (() => new Date().toISOString());
         let completed = 0;
+        let processed = 0;
+        const sharedSongIds = new Set(
+            (options.otherStates ?? [])
+                .filter((other) => other.hymnalId !== hymnalId)
+                .flatMap((other) => Object.values(other.mappings).map((mapping) => mapping.churchToolsSongId)),
+        );
+        state.status = 'running';
+        await this.repository.save({ ...state, status: 'running', completed: 0, failed: plan.conflicts.length });
         for (const candidate of plan.candidates) {
+            processed += 1;
+            // Reload the mapping immediately before validating/deleting. A
+            // stale in-memory snapshot must not turn a changed or removed
+            // mapping into a destructive action.
+            const latestState = await this.repository.load(hymnalId);
+            if (latestState) state = latestState;
+            const mapping = state.mappings[candidate.hymnalSongId];
+            const revalidatedCandidates: UninstallCandidate[] = [];
+            const revalidationConflicts: UninstallConflict[] = [];
+            if (!mapping || mapping.churchToolsSongId !== candidate.churchToolsSongId) {
+                revalidationConflicts.push({
+                    hymnalSongId: candidate.hymnalSongId,
+                    churchToolsSongId: candidate.churchToolsSongId,
+                    reason: 'lookup-failed',
+                    message: 'Das Import-Mapping ist vor dem Löschen nicht mehr unverändert vorhanden.',
+                });
+            } else {
+                // The dry-run is advisory. Revalidate every destructive action
+                // immediately before DELETE, including native identity/fingerprint,
+                // shared ownership and complete event usage coverage.
+                await this.inspectMapping(mapping, sharedSongIds, revalidatedCandidates, revalidationConflicts);
+            }
+            if (revalidationConflicts.length !== 0 || revalidatedCandidates.length !== 1) {
+                const failed = plan.conflicts.length + processed - completed;
+                await this.repository.save({
+                    ...state,
+                    status: 'running',
+                    completed,
+                    failed,
+                    updatedAt: timestamp(),
+                });
+                continue;
+            }
             try {
                 await this.songs.delete(candidate.churchToolsSongId);
-                const mapping = state.mappings[candidate.hymnalSongId];
-                if (mapping) delete state.mappings[candidate.hymnalSongId];
+                delete state.mappings[candidate.hymnalSongId];
                 completed += 1;
                 state.updatedAt = timestamp();
                 await this.repository.save({
                     ...state,
                     status: 'running',
                     completed,
-                    failed: 0,
+                    failed: plan.conflicts.length + processed - completed,
                     updatedAt: state.updatedAt,
                 });
             } catch {
                 // Keep the mapping when deletion fails; a later dry-run can retry safely.
+                const failed = plan.conflicts.length + processed - completed;
+                await this.repository.save({
+                    ...state,
+                    status: 'running',
+                    completed,
+                    failed,
+                    updatedAt: timestamp(),
+                });
             }
         }
         const failed = plan.candidates.length - completed + plan.conflicts.length;
@@ -179,6 +237,18 @@ export class HymnalUninstaller {
         }
         if (this.usageChecker) {
             try {
+                const coverage = await this.usageChecker.getCoverage?.();
+                if (!coverage?.complete) {
+                    conflicts.push({
+                        hymnalSongId: mapping.hymnalSongId,
+                        churchToolsSongId: mapping.churchToolsSongId,
+                        reason: 'lookup-failed',
+                        message:
+                            coverage?.reason ??
+                            'Die vollständige Event-Abdeckung der Nutzungsprüfung konnte nicht nachgewiesen werden.',
+                    });
+                    return;
+                }
                 if (await this.usageChecker.isSongUsed(mapping.churchToolsSongId)) {
                     conflicts.push({
                         hymnalSongId: mapping.hymnalSongId,

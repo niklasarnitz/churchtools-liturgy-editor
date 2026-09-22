@@ -5,6 +5,7 @@
 export { default as Alert } from '@churchtools/styleguide-components/overlays/alert/Alert.vue';
 export { default as Button } from '@churchtools/styleguide-components/form/button/Button.vue';
 export { default as Card } from '@churchtools/styleguide-components/layout/card/Card.vue';
+export { default as DialogSmall } from '@churchtools/styleguide-components/overlays/dialog/DialogSmall.vue';
 export { default as EmptyState } from '@churchtools/styleguide-components/basic/emptyState/EmptyState.vue';
 export { default as Icon } from '@churchtools/styleguide-components/content/icon/Icon.vue';
 export { default as Input } from '@churchtools/styleguide-components/form/input/Input.vue';

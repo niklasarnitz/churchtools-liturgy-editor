@@ -5,14 +5,9 @@ import { computed, ref } from 'vue';
 import type { LiturgyDefinition } from '../data/liturgies';
 import type { OrganizationDefinition } from '../data/organizations';
 
-const props = defineProps<{ liturgies: LiturgyDefinition[]; organizations: OrganizationDefinition[] }>();
+const props = defineProps<{ liturgies: LiturgyDefinition[]; organizations?: OrganizationDefinition[] }>();
 const emit = defineEmits<{ (event: 'use', liturgy: LiturgyDefinition): void }>();
-const organization = ref('');
 const communion = ref<'all' | 'yes' | 'no'>('all');
-const organizationOptions = computed(() => [
-    { id: '', name: 'Alle' },
-    ...props.organizations.map((item) => ({ id: item.id, name: item.name })),
-]);
 const communionOptions = [
     { id: 'all', name: 'Alle' },
     { id: 'yes', name: 'Mit Abendmahl' },
@@ -20,16 +15,13 @@ const communionOptions = [
 ];
 
 const filtered = computed(() => props.liturgies.filter((liturgy) => {
-    const byOrg = !organization.value || liturgy.organizationId === organization.value;
-    const byCommunion = communion.value === 'all' || liturgy.tags.includes('abendmahl') === (communion.value === 'yes');
-    return byOrg && byCommunion;
+    return communion.value === 'all' || liturgy.tags.includes('abendmahl') === (communion.value === 'yes');
 }));
 </script>
 
 <template>
     <div class="grid gap-4">
         <div class="mb-1 flex flex-wrap gap-3" aria-label="Liturgien filtern">
-            <SelectDropdown v-model="organization" class="min-w-56" label="Kirchenkörper" :options="organizationOptions" :emit-id="true" :clear="false" size="S" />
             <SelectDropdown v-model="communion" class="min-w-48" label="Abendmahl" :options="communionOptions" :emit-id="true" :clear="false" size="S" />
         </div>
         <div v-if="filtered.length === 0" class="grid min-h-[260px] place-items-center rounded-[10px] border border-slate-200 bg-white"><EmptyState title="Keine Liturgie passt zu den Filtern" icon="fas fa-church" /></div>

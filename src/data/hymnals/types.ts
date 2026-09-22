@@ -17,5 +17,6 @@ export interface HymnalDefinition {
     language: string;
     description?: string;
     demo?: boolean;
+    metadata?: Record<string, unknown>;
     songs: HymnalSong[];
 }

@@ -21,6 +21,10 @@ export type BootstrapState = { status: 'loading' | 'ready' | 'error'; resources:
 export type ExternalLectionarySource = { fetchDay(input: { date: string; organizationId: string; lectionaryId?: string }): Promise<LiturgicalDay | undefined> };
 export type LectionarySourceOptions = { url?: string; client?: ChurchToolsRequestClient; source?: ExternalLectionarySource };
 export type LiturgicalSuggestion = { day?: LiturgicalDay; source: 'local' | 'external' | 'none'; overrides: Partial<LiturgicalDay> };
+export type InstallationSettings = {
+    version: 1;
+    organizationId?: string;
+};
 
 export type SongSearchResult = { song: NativeSong; hymnalId?: string; hymnalName?: string; number?: string; defaultArrangementId?: number };
 export type AgendaConflictDecision = 'keep' | 'reapply';

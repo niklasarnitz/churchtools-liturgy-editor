@@ -1,5 +1,5 @@
 import type { ChurchToolsRequestClient } from './request';
-import { toChurchToolsError } from './errors';
+import { ChurchToolsError, toChurchToolsError } from './errors';
 
 export type CustomModule = {
     id: number;
@@ -33,7 +33,10 @@ export type JsonStateStore = {
 
 export class ChurchToolsCustomModuleStore implements JsonStateStore {
     private module?: CustomModule;
+    private moduleLookup?: Promise<CustomModule>;
+    private moduleEnsure?: Promise<CustomModule>;
     private readonly categories = new Map<string, CustomDataCategory>();
+    private readonly categoryEnsures = new Map<string, Promise<CustomDataCategory>>();
     private readonly client: ChurchToolsRequestClient;
     private readonly extensionKey: string;
     private readonly extensionName: string;
@@ -53,24 +56,42 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
 
     async getModule(): Promise<CustomModule> {
         if (this.module) return this.module;
-        this.module = await this.client.get<CustomModule>(`/custommodules/${encodeURIComponent(this.extensionKey)}`);
-        return this.module;
+        if (!this.moduleLookup) {
+            this.moduleLookup = this.client.get<CustomModule[]>('/custommodules').then((modules) => {
+                const module = modules.find((candidate) => candidate.shorty === this.extensionKey);
+                if (!module) {
+                    throw new ChurchToolsError(`Custom module "${this.extensionKey}" wurde nicht gefunden.`, {
+                        kind: 'not-found',
+                        status: 404,
+                    });
+                }
+                this.module = module;
+                return module;
+            }).finally(() => {
+                this.moduleLookup = undefined;
+            });
+        }
+        return this.moduleLookup;
     }
 
     async ensureModule(): Promise<CustomModule> {
-        try {
-            return await this.getModule();
-        } catch (error) {
-            if (toChurchToolsError(error).kind !== 'not-found') throw error;
-            this.module = await this.client.post<CustomModule>('/custommodules', {
-                shorty: this.extensionKey,
-                name: this.extensionName,
-                description: this.extensionDescription,
-                inMenu: true,
-                sortKey: 100,
+        if (this.module) return this.module;
+        if (!this.moduleEnsure) {
+            this.moduleEnsure = this.getModule().catch(async (error) => {
+                if (toChurchToolsError(error).kind !== 'not-found') throw error;
+                this.module = await this.client.post<CustomModule>('/custommodules', {
+                    shorty: this.extensionKey,
+                    name: this.extensionName,
+                    description: this.extensionDescription,
+                    inMenu: true,
+                    sortKey: 100,
+                });
+                return this.module;
+            }).finally(() => {
+                this.moduleEnsure = undefined;
             });
-            return this.module;
         }
+        return this.moduleEnsure;
     }
 
     async listCategories(): Promise<CustomDataCategory[]> {
@@ -89,18 +110,25 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
     async ensureCategory(shorty: string, name = shorty, description = `State for ${shorty}`): Promise<CustomDataCategory> {
         const existing = await this.getCategory(shorty);
         if (existing) return existing;
-        const module = await this.ensureModule();
-        const category = await this.client.post<CustomDataCategory>(
-            `/custommodules/${module.id}/customdatacategories`,
-            {
-                customModuleId: module.id,
-                shorty,
-                name,
-                description,
-            },
-        );
-        this.categories.set(shorty, category);
-        return category;
+        const pending = this.categoryEnsures.get(shorty);
+        if (pending) return pending;
+        const operation = this.ensureModule().then(async (module) => {
+            const category = await this.client.post<CustomDataCategory>(
+                `/custommodules/${module.id}/customdatacategories`,
+                {
+                    customModuleId: module.id,
+                    shorty,
+                    name,
+                    description,
+                },
+            );
+            this.categories.set(shorty, category);
+            return category;
+        }).finally(() => {
+            this.categoryEnsures.delete(shorty);
+        });
+        this.categoryEnsures.set(shorty, operation);
+        return operation;
     }
 
     async listValues(categoryShorty: string): Promise<CustomDataValue[]> {

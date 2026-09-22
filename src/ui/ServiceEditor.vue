@@ -7,6 +7,8 @@ import { generateNormalizedAgenda } from '../domain/agenda-generation';
 import { resolveLiturgicalDay, formatScriptureReference } from '../domain/lectionary';
 import type { LiturgyNode, LiturgyDefinition } from '../data/liturgies';
 import type { OrganizationDefinition } from '../data/organizations';
+import type { LiturgicalDay } from '../data/lectionaries';
+import type { LiturgicalSuggestion } from '../application';
 import { resourceRegistry } from '../data/registry';
 import type { WorkspaceEvent, WorkspaceSong, AgendaDriftView } from './types';
 import SongPicker from './SongPicker.vue';
@@ -22,12 +24,14 @@ type SlotField = {
 const props = defineProps<{
     event: WorkspaceEvent;
     initialLiturgyId?: string;
+    organizationId?: string;
     liturgies: LiturgyDefinition[];
     organizations: OrganizationDefinition[];
     songs: WorkspaceSong[];
     searchSongs: (query: string) => Promise<WorkspaceSong[]>;
     saveAgenda: (event: WorkspaceEvent, template: LiturgyDefinition, slots: Readonly<Record<string, AgendaSlotValue | undefined>>, options?: { series?: string; force?: boolean }) => Promise<unknown>;
     inspectAgenda: (event: WorkspaceEvent) => Promise<AgendaDriftView | undefined>;
+    suggestLiturgicalDay?: (input: { date: string; organizationId: string; liturgyId?: string; overrides?: Parameters<typeof resolveLiturgicalDay>[0]['overrides'] }) => Promise<LiturgicalSuggestion>;
 }>();
 
 const emit = defineEmits<{
@@ -36,17 +40,18 @@ const emit = defineEmits<{
     (event: 'drift', value: AgendaDriftView): void;
 }>();
 
-const initialLiturgy = props.liturgies.find((item) => item.id === props.initialLiturgyId)
-    ?? props.liturgies.find((item) => item.organizationId === 'ekiba')
-    ?? props.liturgies[0];
-const selectedOrganizationId = ref(initialLiturgy?.organizationId ?? props.organizations[0]?.id ?? '');
+const initialLiturgy = props.liturgies.find((item) => item.id === props.initialLiturgyId) ?? props.liturgies[0];
+const selectedOrganizationId = computed(() => props.organizationId ?? '');
 const selectedLiturgyId = ref(initialLiturgy?.id ?? '');
 const selectedDate = ref(props.event.startDate.slice(0, 10));
 const sermonSeries = ref('');
 const textSlots = reactive<Record<string, string>>({});
 const songSlots = reactive<Record<string, SongSlotValue | undefined>>({});
 const optionalSections = reactive<Record<string, boolean>>({});
-const liturgicalDay = ref<ReturnType<typeof resolveLiturgicalDay>>();
+const liturgicalDay = ref<LiturgicalDay>();
+const suggestionSource = ref<LiturgicalSuggestion['source']>('none');
+const suggestionLoading = ref(false);
+let refreshToken = 0;
 const preview = ref<NormalizedAgenda>();
 const saving = ref(false);
 const saveError = ref<string>();
@@ -85,20 +90,41 @@ const readingHint = (slot: string): string => {
     return reference ? formatScriptureReference(reference) : 'Kein Vorschlag';
 };
 
-const refreshDay = () => {
+const refreshDay = async () => {
+    const token = ++refreshToken;
     liturgicalDay.value = undefined;
+    suggestionSource.value = 'none';
     if (!selectedOrganization.value || !selectedLiturgy.value) return;
+    suggestionLoading.value = true;
     try {
-        liturgicalDay.value = resolveLiturgicalDay({
-            date: selectedDate.value,
-            organization: selectedOrganization.value,
-            liturgy: selectedLiturgy.value,
-            lectionaries: resourceRegistry.lectionaries,
-            overrides: sermonSeries.value ? { sermonSeries: sermonSeries.value } : undefined,
-        });
+        const suggestion = props.suggestLiturgicalDay
+            ? await props.suggestLiturgicalDay({
+                  date: selectedDate.value,
+                  organizationId: selectedOrganization.value.id,
+                  liturgyId: selectedLiturgy.value.id,
+                  overrides: sermonSeries.value ? { sermonSeries: sermonSeries.value } : undefined,
+              })
+            : {
+                  day: resolveLiturgicalDay({
+                      date: selectedDate.value,
+                      organization: selectedOrganization.value,
+                      liturgy: selectedLiturgy.value,
+                      lectionaries: resourceRegistry.lectionaries,
+                      overrides: sermonSeries.value ? { sermonSeries: sermonSeries.value } : undefined,
+                  }),
+                  source: 'local' as const,
+                  overrides: {},
+              };
+        if (token !== refreshToken) return;
+        liturgicalDay.value = suggestion.day;
+        suggestionSource.value = suggestion.source;
         if (liturgicalDay.value?.sermonSeries && !sermonSeries.value) sermonSeries.value = liturgicalDay.value.sermonSeries;
     } catch {
+        if (token !== refreshToken) return;
         liturgicalDay.value = undefined;
+        suggestionSource.value = 'none';
+    } finally {
+        if (token === refreshToken) suggestionLoading.value = false;
     }
 };
 
@@ -143,13 +169,15 @@ const save = async (force = false) => {
     }
 };
 
-watch([selectedDate, selectedOrganizationId, selectedLiturgyId, sermonSeries], refreshDay, { immediate: true });
-watch([selectedLiturgyId, effectiveSlots, optionalSections], buildPreview, { deep: true });
-onMounted(async () => {
-    refreshDay();
+watch([selectedDate, selectedOrganizationId, selectedLiturgyId], () => { void refreshDay(); }, { immediate: true });
+watch([selectedLiturgyId, effectiveSlots, optionalSections, sermonSeries, liturgicalDay], buildPreview, { deep: true });
+onMounted(() => {
     buildPreview();
-    const drift = await props.inspectAgenda(props.event);
-    if (drift) emit('drift', drift);
+    void props.inspectAgenda(props.event).then((drift) => {
+        if (drift) emit('drift', drift);
+    }).catch((cause: unknown) => {
+        saveError.value = cause instanceof Error ? cause.message : 'Der native Ablauf konnte nicht geladen werden.';
+    });
 });
 
 defineExpose({ saveWithForce: () => save(true) });
@@ -166,11 +194,13 @@ defineExpose({ saveWithForce: () => save(true) });
                 <template #titleFull><div class="flex items-start justify-between gap-5"><div><div class="text-[11px] font-bold uppercase tracking-[.055em] text-[#66717d]">Grundlagen</div><h3 class="mt-1 text-[18px] font-semibold tracking-[-.02em]">Liturgie und Kirchenjahr</h3></div><Icon icon="fas fa-calendar-days" size="L" /></div></template>
                 <div class="grid grid-cols-1 gap-4 min-[561px]:grid-cols-2">
                     <Input v-model="selectedDate" label="Datum" type="date" />
-                    <SelectDropdown v-model="selectedOrganizationId" label="Kirchenkörper" :options="organizations.map((item) => ({ id: item.id, name: item.name }))" :emit-id="true" :clear="false" />
+                    <div v-if="selectedOrganization" class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5"><div class="text-[11px] font-bold uppercase tracking-[.055em] text-[#66717d]">Kirchenkörper</div><div class="mt-1 text-sm font-semibold text-slate-800">{{ selectedOrganization.name }}</div><div class="mt-0.5 text-[11px] text-[#66717d]">In den Einstellungen festgelegt</div></div>
+                    <div v-else class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">Bitte zuerst einen Kirchenkörper in den Einstellungen festlegen.</div>
                     <SelectDropdown v-model="selectedLiturgyId" class="col-span-full max-[560px]:col-auto" label="Liturgie" :options="liturgies.map((item) => ({ id: item.id, name: item.name }))" :emit-id="true" :clear="false" />
                     <Input v-model="sermonSeries" label="Predigtreihe" placeholder="z. B. III" />
                 </div>
-                <div v-if="liturgicalDay" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#4b5d79]"></span><div><strong>{{ liturgicalDay.name }}</strong><span v-if="liturgicalDay.season"> · {{ liturgicalDay.season }}</span><p class="my-0.5 text-[#66717d]">Vorschläge aus dem Test-Lektionar. Alle Angaben bleiben überschreibbar.</p></div></div>
+                <div v-if="suggestionLoading" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><Icon icon="fas fa-spinner" size="S" /> Kirchenjahr-Vorschlag wird geladen …</div>
+                <div v-else-if="liturgicalDay" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#4b5d79]"></span><div><strong>{{ liturgicalDay.name }}</strong><span v-if="liturgicalDay.season"> · {{ liturgicalDay.season }}</span><p class="my-0.5 text-[#66717d]">Vorschläge aus {{ suggestionSource === 'external' ? 'dem verbundenen Lektionar' : 'den installierten Ressourcen' }}. Alle Angaben bleiben überschreibbar.</p></div></div>
                 <div v-else class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><Icon icon="fas fa-circle-info" size="S" /> Für dieses Datum liegt kein Lektionar-Vorschlag vor. Die Felder können manuell ausgefüllt werden.</div>
             </Card>
 

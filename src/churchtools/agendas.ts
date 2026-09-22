@@ -60,6 +60,18 @@ export class ChurchToolsAgendasAdapter {
 }
 
 /**
+ * Describes the event universe inspected by a usage checker.
+ *
+ * A false value is intentionally conservative: an empty or partially paged
+ * event query must never be interpreted as proof that a song is unused.
+ */
+export type AgendaSongUsageCoverage = {
+    complete: boolean;
+    checkedEventIds?: readonly number[];
+    reason?: string;
+};
+
+/**
  * Checks usage through the documented per-event agenda song endpoint. The
  * caller supplies the event ids it is allowed to inspect; there is no global
  * "song usage" endpoint in the current REST contract.
@@ -67,16 +79,33 @@ export class ChurchToolsAgendasAdapter {
 export class ChurchToolsAgendaSongUsageChecker {
     private readonly eventIds: readonly number[];
     private readonly agendas: ChurchToolsAgendasAdapter;
+    private readonly coverage: AgendaSongUsageCoverage;
 
-    constructor(agendas: ChurchToolsAgendasAdapter, eventIds: readonly number[]) {
+    constructor(
+        agendas: ChurchToolsAgendasAdapter,
+        eventIds: readonly number[],
+        coverage: AgendaSongUsageCoverage = {
+            complete: false,
+            reason: 'Die Event-Abdeckung der Nutzungsprüfung wurde nicht bestätigt.',
+        },
+    ) {
         this.agendas = agendas;
         this.eventIds = eventIds;
+        this.coverage = {
+            ...coverage,
+            checkedEventIds: coverage.checkedEventIds ?? eventIds,
+        };
+    }
+
+    getCoverage(): Promise<AgendaSongUsageCoverage> {
+        return Promise.resolve({
+            ...this.coverage,
+            checkedEventIds: this.coverage.checkedEventIds ? [...this.coverage.checkedEventIds] : undefined,
+        });
     }
 
     async isSongUsed(songId: number): Promise<boolean> {
-        if (this.eventIds.length === 0) {
-            throw new Error('Song usage cannot be proven without event ids.');
-        }
+        if (!this.coverage.complete) throw new Error(this.coverage.reason ?? 'Song usage coverage is incomplete.');
         for (const eventId of this.eventIds) {
             const songs = await this.agendas.listSongs(eventId);
             if (songs.some((song) => song.id === songId)) return true;

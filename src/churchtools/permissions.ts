@@ -6,13 +6,30 @@ export type PermissionValue = boolean | number[] | undefined;
 
 export class ChurchToolsPermissionsAdapter {
     private readonly client: ChurchToolsRequestClient;
+    private globalPermissions?: NativeGlobalPermissions;
+    private globalPermissionsRequest?: Promise<NativeGlobalPermissions>;
 
     constructor(client: ChurchToolsRequestClient) {
         this.client = client;
     }
 
     getGlobal(): Promise<NativeGlobalPermissions> {
-        return this.client.get<NativeGlobalPermissions>('/permissions/global');
+        if (this.globalPermissions) return Promise.resolve(this.globalPermissions);
+        if (this.globalPermissionsRequest) return this.globalPermissionsRequest;
+        this.globalPermissionsRequest = this.client.get<NativeGlobalPermissions>('/permissions/global')
+            .then((permissions) => {
+                this.globalPermissions = permissions;
+                return permissions;
+            })
+            .finally(() => {
+                this.globalPermissionsRequest = undefined;
+            });
+        return this.globalPermissionsRequest;
+    }
+
+    /** Reload permissions after an explicit host-side permission change. */
+    invalidate(): void {
+        this.globalPermissions = undefined;
     }
 
     async can(moduleName: string, permission: string, dataId?: number): Promise<boolean> {

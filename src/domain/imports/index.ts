@@ -5,6 +5,7 @@ export type {
     HymnalUninstallPlan,
     HymnalUninstallState,
     HymnalUsageChecker,
+    HymnalUsageCoverage,
     UninstallCandidate,
     UninstallConflict,
 } from './uninstaller';

@@ -23,6 +23,7 @@ import type {
     BootstrapState,
     HymnalOperationResult,
     HymnalUninstallResult,
+    InstallationSettings,
     LectionarySourceOptions,
     LiturgicalSuggestion,
     SaveAgendaInput,
@@ -33,6 +34,13 @@ import type {
 
 const MANAGEMENT_NODE_ID = '__liturgy-editor-management-hint';
 const MANAGEMENT_HINT = 'Dieser Ablauf wird über den Liturgie-Editor verwaltet. Änderungen sollten möglichst dort vorgenommen werden.';
+// The ChurchTools event endpoint documents a generic limit parameter. The
+// official client uses 100 for getAllPages; keep that bounded value here
+// instead of relying on an undocumented larger limit.
+const USAGE_EVENT_PAGE_LIMIT = 100;
+const USAGE_EVENT_PAGE_CAP = 100;
+const USAGE_EVENT_COVERAGE_FAILURE = 'Die Event-Abdeckung der Nutzungsprüfung konnte nicht vollständig geladen werden.';
+const INSTALLATION_SETTINGS_KEY = 'settings:installation';
 
 /** Application-facing orchestration. UI code talks to this class, never to REST adapters directly. */
 export class LiturgyEditorApplication {
@@ -69,6 +77,19 @@ export class LiturgyEditorApplication {
             const normalized = toChurchToolsError(error);
             return { status: 'error', resources: this.resources, upcoming: [], installedHymnals: [], error: normalized.message };
         }
+    }
+
+    async getInstallationSettings(): Promise<InstallationSettings> {
+        return await this.state.get<InstallationSettings>(INSTALLATION_SETTINGS_KEY) ?? { version: 1 };
+    }
+
+    async updateInstallationSettings(input: { organizationId?: string }): Promise<InstallationSettings> {
+        if (input.organizationId && !this.resources.organizations.some((candidate) => candidate.id === input.organizationId)) {
+            throw new Error(`Organization "${input.organizationId}" is not installed.`);
+        }
+        const settings: InstallationSettings = { version: 1, organizationId: input.organizationId };
+        await this.state.set(INSTALLATION_SETTINGS_KEY, settings);
+        return settings;
     }
 
     async getUpcomingServices(options: { from?: string; to?: string; limit?: number } = {}): Promise<UpcomingService[]> {
@@ -159,10 +180,18 @@ export class LiturgyEditorApplication {
         if (!organization) throw new Error(`Organization "${input.organizationId}" is not installed.`);
         const liturgy = input.liturgyId ? this.requireLiturgy(input.liturgyId) : undefined;
         const date = toIsoDate(input.date);
-        const local = resolveLiturgicalDay({ date, organization, liturgy, lectionaryId: input.lectionaryId, lectionaries: this.resources.lectionaries, overrides: input.overrides });
+        let local: LiturgicalDay | undefined;
+        try {
+            local = resolveLiturgicalDay({ date, organization, liturgy, lectionaryId: input.lectionaryId, lectionaries: this.resources.lectionaries, overrides: input.overrides });
+        } catch (error) {
+            // A configured remote profile (for example `ekd`) need not be
+            // duplicated in the extension's small local resource bundle.
+            // Preserve local validation errors when no remote source exists.
+            if (!this.deps.lectionary) throw error;
+        }
         if (local) return { day: local, source: 'local', overrides: input.overrides ?? {} };
         const external = await this.fetchExternalLiturgicalDay(date, organization.id, input.lectionaryId ?? liturgy?.lectionaryId);
-        return { day: external, source: external ? 'external' : 'none', overrides: input.overrides ?? {} };
+        return { day: applyLiturgicalDayOverrides(external, input.overrides), source: external ? 'external' : 'none', overrides: input.overrides ?? {} };
     }
 
     async searchSongs(query: string, options: { limit?: number } = {}): Promise<SongSearchResult[]> {
@@ -249,8 +278,29 @@ export class LiturgyEditorApplication {
     }
 
     private createManagedState(input: SaveAgendaInput, agenda: NativeAgenda, generated: readonly GeneratedAgendaItem[]): ManagedAgenda {
+        if (agenda.items.length !== generated.length) {
+            throw new Error(`Die vom ChurchTools-Server zurückgegebene Agenda weicht von den generierten Elementen ab: erwartet wurden ${generated.length} Elemente, erhalten wurden ${agenda.items.length}. Der Ablauf wurde nicht als verwaltet markiert.`);
+        }
         const nodeMappings: ManagedAgenda['nodeMappings'] = {};
-        generated.forEach((entry, index) => { const item = agenda.items[index]; if (item) nodeMappings[entry.nodeId] = { agendaItemIds: [item.id] }; });
+        for (let index = 0; index < generated.length; index += 1) {
+            const item = agenda.items[index];
+            const entry = generated[index];
+            if (!item) {
+                throw new Error(`Ablaufpunkt an Position ${index + 1} (${entry.item.title}) fehlt in der ChurchTools-Antwort.`);
+            }
+            if (item.type !== entry.item.type) {
+                throw new Error(`Ablaufpunkt an Position ${index + 1} hat unerwarteten Typ: erwartet "${entry.item.type}", erhalten "${item.type}".`);
+            }
+            if (item.title !== entry.item.title) {
+                throw new Error(`Ablaufpunkt an Position ${index + 1} hat abweichenden Titel: erwartet "${entry.item.title}", erhalten "${item.title}".`);
+            }
+            if (entry.item.type === 'song') {
+                if (entry.item.arrangementId !== undefined && item.arrangementId !== entry.item.arrangementId) {
+                    throw new Error(`Lied an Position ${index + 1} ("${item.title}") hat abweichende Arrangement-ID: erwartet ${entry.item.arrangementId}, erhalten ${item.arrangementId}.`);
+                }
+            }
+            nodeMappings[entry.nodeId] = { agendaItemIds: [item.id] };
+        }
         return { eventId: input.eventId, agendaId: agenda.id, templateId: input.liturgyId, templateVersion: this.requireLiturgy(input.liturgyId).version, nodeMappings, lastAppliedFingerprint: agendaFingerprint(agenda), updatedAt: this.now() };
     }
 
@@ -264,8 +314,50 @@ export class LiturgyEditorApplication {
     }
 
     private async createUsageChecker(): Promise<HymnalUsageChecker> {
-        const events = await this.deps.events.list({ limit: 500 });
-        return new ChurchToolsAgendaSongUsageChecker(this.deps.agendas, events.flatMap((event) => event.id === undefined ? [] : [event.id]));
+        const eventIds = new Set<number>();
+        let complete = true;
+        let reason: string | undefined;
+        try {
+            const from = this.now().slice(0, 10);
+            for (const direction of ['backward', 'forward'] as const) {
+                const pages = new Set<string>();
+                for (let page = 1; page <= USAGE_EVENT_PAGE_CAP; page += 1) {
+                    const events = await this.deps.events.list({
+                        from,
+                        direction,
+                        limit: USAGE_EVENT_PAGE_LIMIT,
+                        page,
+                        canceled: true,
+                    });
+                    if (!Array.isArray(events) || events.length > USAGE_EVENT_PAGE_LIMIT) {
+                        throw new Error('ChurchTools returned an invalid event page.');
+                    }
+                    const pageIds = events.map((event) => event.id);
+                    if (pageIds.some((eventId) => !Number.isInteger(eventId))) {
+                        throw new Error('ChurchTools returned an event without a usable id.');
+                    }
+                    const pageSignature = [...new Set(pageIds)].sort((left, right) => left - right).join(',');
+                    if (pages.has(pageSignature)) {
+                        throw new Error('ChurchTools returned a repeated event page.');
+                    }
+                    pages.add(pageSignature);
+                    for (const eventId of pageIds) eventIds.add(eventId);
+                    if (events.length < USAGE_EVENT_PAGE_LIMIT) break;
+                    if (page === USAGE_EVENT_PAGE_CAP) {
+                        throw new Error('ChurchTools event pagination exceeded the safety cap.');
+                    }
+                }
+            }
+        } catch {
+            complete = false;
+            reason = USAGE_EVENT_COVERAGE_FAILURE;
+        }
+        const checkedEventIds = [...eventIds];
+        return new ChurchToolsAgendaSongUsageChecker(this.deps.agendas, checkedEventIds, {
+            complete,
+            checkedEventIds,
+            reason,
+        });
     }
 
     private async fetchExternalLiturgicalDay(date: string, organizationId: string, lectionaryId?: string): Promise<LiturgicalDay | undefined> {
@@ -276,6 +368,18 @@ export class LiturgyEditorApplication {
         if (typeof response === 'object' && response !== null && 'data' in response) return response.data;
         return response as LiturgicalDay;
     }
+}
+
+function applyLiturgicalDayOverrides(day: LiturgicalDay | undefined, overrides: Parameters<typeof resolveLiturgicalDay>[0]['overrides']): LiturgicalDay | undefined {
+    if (!day || !overrides) return day;
+    return {
+        ...structuredClone(day),
+        ...overrides,
+        readings: {
+            ...day.readings,
+            ...overrides.readings,
+        },
+    };
 }
 
 function normalizedToNative(item: { type: 'header' | 'text' | 'song'; title: string; note?: string; arrangementId?: number | null }): NativeAgendaItemInput {

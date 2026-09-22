@@ -54,8 +54,17 @@ function responseData(error: unknown): unknown {
 function messageOf(error: unknown): string | undefined {
     const record = asRecord(error);
     const data = asRecord(responseData(error));
-    for (const candidate of [data?.translatedMessage, data?.message, data?.error, record?.message]) {
+    for (const candidate of [data?.translatedMessage, data?.message, data?.error, record?.translatedMessage, record?.message]) {
         if (typeof candidate === 'string' && candidate.trim()) return candidate;
+    }
+    return undefined;
+}
+
+function messageKeyOf(error: unknown): string | undefined {
+    const record = asRecord(error);
+    const data = asRecord(responseData(error));
+    for (const candidate of [data?.messageKey, record?.messageKey]) {
+        if (candidate === 'error.notfound') return candidate;
     }
     return undefined;
 }
@@ -83,7 +92,10 @@ export function toChurchToolsError(error: unknown, operation?: string): ChurchTo
     if (error instanceof ChurchToolsError) return error;
     const status = statusOf(error);
     return new ChurchToolsError(messageOf(error) ?? 'ChurchTools request failed.', {
-        kind: kindForStatus(status),
+        // Some ChurchTools REST/legacy bridges expose a structured error
+        // without an HTTP response. Only the documented not-found key is
+        // promoted; other message keys must not be guessed as 404s.
+        kind: messageKeyOf(error) === 'error.notfound' ? 'not-found' : kindForStatus(status),
         status,
         operation,
         details: responseData(error),

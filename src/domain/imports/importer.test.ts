@@ -79,6 +79,25 @@ class FakeSongs implements HymnalSongPort {
 }
 
 describe('HymnalImporter', () => {
+    it('verifies state persistence before creating native categories or songs', async () => {
+        const songs = new FakeSongs();
+        let categoryCreates = 0;
+        songs.listCategories = async () => [];
+        songs.createCategory = async () => {
+            categoryCreates += 1;
+            return { id: 1, name: 'demo' };
+        };
+        const state: HymnalImportStateRepository = {
+            load: async () => undefined,
+            save: async () => { throw new Error('state is not writable'); },
+        };
+        const importer = new HymnalImporter(songs, state);
+
+        await expect(importer.import(hymnal)).rejects.toThrow('state is not writable');
+        expect(categoryCreates).toBe(0);
+        expect(songs.createCount).toBe(0);
+    });
+
     it('is resumable and idempotent after the mapping was persisted', async () => {
         const songs = new FakeSongs();
         const state = new MemoryState();

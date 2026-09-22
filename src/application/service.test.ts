@@ -199,7 +199,7 @@ describe('LiturgyEditorApplication workflow', () => {
     it('translates missing write permission before an import starts', async () => {
         const deps = dependencies({ permissions: { assertAgendaRead: async () => undefined, assertAgendaWrite: async () => undefined, assertSongRead: async () => undefined, assertSongWrite: async () => { throw new ChurchToolsError('forbidden', { kind: 'forbidden', status: 403 }); } } });
         const app = new LiturgyEditorApplication(deps);
-        await expect(app.installHymnal('eg-baden-demo')).rejects.toMatchObject({ kind: 'forbidden' });
+        await expect(app.installHymnal('eg-baden')).rejects.toMatchObject({ kind: 'forbidden' });
     });
 
     it('uses an external lectionary source and applies manual overrides last', async () => {

@@ -100,4 +100,24 @@ describe('useWorkspace installation settings and resource scoping', () => {
             workspace.importHymnal(foreignHymnal),
         ).rejects.toThrow('gehört nicht zum konfigurierten Kirchenkörper');
     });
+
+    it('scopes ELKG² hymnal when SELK organization is saved', async () => {
+        const workspace = useWorkspace();
+        await workspace.saveInstallationOrganization('selk');
+
+        expect(workspace.installationSettings.organizationId).toBe('selk');
+        expect(workspace.selectedOrganization?.id).toBe('selk');
+        expect(workspace.availableHymnals.map((h) => h.id)).toEqual(['elkg2']);
+        expect(workspace.availableHymnals[0].songs.length).toBe(864);
+    });
+
+    it('scopes Lutheran Service Book hymnal when LCMS organization is saved', async () => {
+        const workspace = useWorkspace();
+        await workspace.saveInstallationOrganization('lcms');
+
+        expect(workspace.installationSettings.organizationId).toBe('lcms');
+        expect(workspace.selectedOrganization?.id).toBe('lcms');
+        expect(workspace.availableHymnals.map((h) => h.id)).toEqual(['lutheran-service-book']);
+        expect(workspace.availableHymnals[0].songs.length).toBe(636);
+    });
 });

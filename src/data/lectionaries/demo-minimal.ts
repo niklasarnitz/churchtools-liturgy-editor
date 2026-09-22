@@ -21,7 +21,7 @@ export const demoMinimalLectionary: LectionaryDefinition = {
                 sermon: { reference: 'Lk 14,1–11' },
             },
             weeklyPsalm: 'Ps 119,1–8',
-            weeklyHymn: 'eg-baden-demo:317',
+            weeklyHymn: 'eg-baden:317',
         },
         {
             id: 'demo-minimal:2026-09-27',

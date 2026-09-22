@@ -20,11 +20,20 @@ const emit = defineEmits<{
 }>();
 
 const confirmInstall = ref<HymnalDefinition>();
-const confirmUninstall = ref<HymnalDefinition>();
+const confirmUpdate = ref<HymnalDefinition>();
 
-const stateLabel = (state: HymnalImportState | undefined) => {
+const isUpdateAvailable = (hymnal: HymnalDefinition) => {
+    const state = props.installed(hymnal.id);
+    return state?.status === 'completed' && state.hymnalVersion < hymnal.version;
+};
+
+const stateLabel = (hymnal: HymnalDefinition) => {
+    const state = props.installed(hymnal.id);
     if (!state) return 'Nicht installiert';
-    if (state.status === 'completed') return 'Installiert';
+    if (state.status === 'completed') {
+        if (state.hymnalVersion < hymnal.version) return `Update verfügbar (v${state.hymnalVersion} → v${hymnal.version})`;
+        return 'Installiert';
+    }
     if (state.status === 'partially-completed') return 'Teilweise installiert';
     if (state.status === 'failed') return 'Import fehlgeschlagen';
     return 'Import läuft';
@@ -32,6 +41,16 @@ const stateLabel = (state: HymnalImportState | undefined) => {
 
 const countLabel = (hymnal: HymnalDefinition) => `${hymnal.songs.length} ${hymnal.songs.length === 1 ? 'Eintrag' : 'Einträge'}`;
 const current = computed(() => (props.progress && props.progress.total > 0 ? props.progress : undefined));
+
+const badgeClass = (hymnal: HymnalDefinition) => {
+    const state = props.installed(hymnal.id);
+    if (isUpdateAvailable(hymnal)) return 'bg-amber-100 text-amber-900';
+    if (!state) return 'bg-slate-100 text-slate-600';
+    if (state.status === 'completed') return 'bg-emerald-100 text-emerald-800';
+    if (state.status === 'partially-completed') return 'bg-amber-100 text-amber-900';
+    if (state.status === 'failed') return 'bg-rose-100 text-rose-800';
+    return 'bg-sky-100 text-sky-800';
+};
 </script>
 
 <template>
@@ -52,7 +71,7 @@ const current = computed(() => (props.progress && props.progress.total > 0 ? pro
                 <div class="mt-[18px] flex flex-wrap gap-4 text-xs text-slate-500">
                     <span class="inline-flex items-center gap-1.5"><Icon icon="fas fa-list-ol" size="S" /> {{ countLabel(hymnal) }}</span>
                     <span class="inline-flex items-center gap-1.5"><Icon icon="fas fa-landmark" size="S" /> {{ hymnal.organizationIds.join(', ') }}</span>
-                    <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{{ stateLabel(props.installed(hymnal.id)) }}</span>
+                    <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold" :class="badgeClass(hymnal)">{{ stateLabel(hymnal) }}</span>
                 </div>
                 <div v-if="current && props.installed(hymnal.id)?.hymnalId === hymnal.id" class="mt-5 border-t border-slate-200 pt-4">
                     <div class="mb-2 flex justify-between text-xs font-bold text-slate-500"><span>{{ current.completed }} / {{ current.total }}</span><span>{{ current.percent }} %</span></div>
@@ -62,12 +81,15 @@ const current = computed(() => (props.progress && props.progress.total > 0 ? pro
                 <div class="mt-5 flex justify-end gap-2">
                     <Button v-if="!props.installed(hymnal.id) || props.installed(hymnal.id)?.status === 'failed'" label="Installieren" icon="fas fa-download" :loading="busy" @click="confirmInstall = hymnal" />
                     <Button v-else-if="props.installed(hymnal.id)?.status === 'partially-completed'" label="Fehlgeschlagene erneut versuchen" icon="fas fa-rotate-right" :loading="busy" :outlined="true" @click="emit('retry', hymnal)" />
-                    <Button v-if="props.installed(hymnal.id)?.status === 'completed'" label="Deinstallieren" icon="fas fa-trash" :outlined="true" :loading="busy" @click="confirmUninstall = hymnal" />
+                    <template v-else-if="props.installed(hymnal.id)?.status === 'completed'">
+                        <Button v-if="isUpdateAvailable(hymnal)" label="Aktualisieren" icon="fas fa-rotate" :loading="busy" @click="confirmUpdate = hymnal" />
+                        <Button label="Deinstallieren" icon="fas fa-trash" :outlined="true" :loading="busy" @click="emit('uninstall', hymnal)" />
+                    </template>
                 </div>
             </Card>
         </div>
     </div>
 
     <Alert v-if="confirmInstall" title="Gesangbuch installieren" :description="`Das Gesangbuch „${confirmInstall.name}“ enthält ${confirmInstall.songs.length} Lieder. Diese werden als Songs in ChurchTools angelegt.`" button="Installieren" cancel-button="Abbrechen" @ok="emit('install', confirmInstall); confirmInstall = undefined" @cancel="confirmInstall = undefined" />
-    <Alert v-if="confirmUninstall" title="Gesangbuch deinstallieren" :description="`Zuerst wird geprüft, welche Songs sicher entfernt werden können. Manuell veränderte, verwendete oder nicht eindeutig zugeordnete Songs bleiben erhalten.`" button="Prüfen und deinstallieren" cancel-button="Abbrechen" @ok="emit('uninstall', confirmUninstall); confirmUninstall = undefined" @cancel="confirmUninstall = undefined" />
+    <Alert v-if="confirmUpdate" title="Gesangbuch aktualisieren" :description="`Das Gesangbuch „${confirmUpdate.name}“ wird von Version ${props.installed(confirmUpdate.id)?.hymnalVersion} auf Version ${confirmUpdate.version} aktualisiert. Neue Lieder werden hinzugefügt und unveränderte Lieder aktualisiert.`" button="Aktualisieren" cancel-button="Abbrechen" @ok="emit('install', confirmUpdate); confirmUpdate = undefined" @cancel="confirmUpdate = undefined" />
 </template>

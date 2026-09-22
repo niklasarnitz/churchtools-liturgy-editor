@@ -22,24 +22,25 @@ describe('static resource registry', () => {
         expect(resourceRegistry.lectionaries.every((lectionary) => lectionary.version > 0)).toBe(true);
     });
 
-    it('keeps fixtures marked as demos and the merged Baden index as source data', () => {
+    it('keeps real hymnal data and fixtures appropriately tagged', () => {
         expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'eg-baden')?.demo).not.toBe(true);
-        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'eg-baden-demo')?.demo).toBe(true);
+        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'elkg2')?.demo).not.toBe(true);
+        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'lutheran-service-book')?.demo).not.toBe(true);
         expect(resourceRegistry.liturgies.every((liturgy) => liturgy.tags.includes('demo'))).toBe(true);
         expect(resourceRegistry.lectionaries.every((lectionary) => lectionary.id.startsWith('demo-'))).toBe(true);
     });
 
     it('reports duplicate stable hymn-song IDs', () => {
-        const demoHymnal = resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'eg-baden-demo')!;
-        const duplicateSong = demoHymnal.songs[0];
+        const hymnal = resourceRegistry.hymnals.find((h) => h.id === 'eg-baden')!;
+        const duplicateSong = hymnal.songs[0];
         const invalid = {
             ...resourceRegistry,
             hymnals: [
                 ...resourceRegistry.hymnals,
-                { ...demoHymnal, id: 'second-demo', songs: [duplicateSong] },
+                { ...hymnal, id: 'second-hymnal', songs: [duplicateSong] },
             ],
         };
 
-        expect(validateResourceRegistry(invalid)).toContain('duplicate hymnal song id "eg-baden-demo:001"');
+        expect(validateResourceRegistry(invalid)).toContain(`duplicate hymnal song id "${duplicateSong.id}"`);
     });
 });

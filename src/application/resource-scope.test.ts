@@ -9,8 +9,14 @@ describe('scopeResourceRegistry', () => {
 
         expect(scoped.organizations.map((organization) => organization.id)).toEqual(['ekiba']);
         expect(scoped.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-predigtgottesdienst-demo']);
-        expect(scoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['eg-baden', 'eg-baden-demo']);
+        expect(scoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['eg-baden']);
         expect(scoped.lectionaries.map((lectionary) => lectionary.id)).toEqual(['demo-minimal']);
+
+        const selkScoped = scopeResourceRegistry(resourceRegistry, 'selk');
+        expect(selkScoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['elkg2']);
+
+        const lcmsScoped = scopeResourceRegistry(resourceRegistry, 'lcms');
+        expect(lcmsScoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['lutheran-service-book']);
     });
 
     it('does not fall back when the installation has no organization selected', () => {

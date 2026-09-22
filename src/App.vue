@@ -10,6 +10,7 @@ import type { ExtensionPoint } from './ui/context';
 import HymnalCatalog from './ui/HymnalCatalog.vue';
 import LiturgyLibrary from './ui/LiturgyLibrary.vue';
 import ServiceEditor from './ui/ServiceEditor.vue';
+import SettingsView from './ui/SettingsView.vue';
 import { formatScriptureReference } from './domain/lectionary';
 import { resourceRegistry } from './data/registry';
 import type { HymnalImportState } from './domain/imports';
@@ -45,13 +46,14 @@ const workspace = useWorkspace({ baseUrl: props.baseUrl, notify: addNotice });
 
 const sectionItems = computed(() => props.extensionPoint === 'admin'
     ? [
-          { key: 'hymnals' as const, label: 'Gesangbücher', icon: 'fas fa-book-open' },
           { key: 'settings' as const, label: 'Einstellungen', icon: 'fas fa-sliders' },
+          { key: 'hymnals' as const, label: 'Gesangbücher', icon: 'fas fa-book-open' },
       ]
     : [
           { key: 'services' as const, label: 'Gottesdienste', icon: 'fas fa-calendar-days' },
           { key: 'liturgies' as const, label: 'Liturgien', icon: 'fas fa-church' },
           { key: 'hymnals' as const, label: 'Gesangbücher', icon: 'fas fa-book-open' },
+          { key: 'settings' as const, label: 'Einstellungen', icon: 'fas fa-sliders' },
       ]);
 
 const formatDate = (date: string) => new Date(date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
@@ -118,14 +120,40 @@ const install = async (hymnal: HymnalDefinition) => {
     }
 };
 
+const pendingUninstall = ref<{
+    hymnal: HymnalDefinition;
+    plan: {
+        safeCount: number;
+        conflictCount: number;
+        candidates: Array<{ hymnalSongId: string; churchToolsSongId: number }>;
+        conflicts: Array<{ hymnalSongId: string; churchToolsSongId?: number; reason: string; message: string }>;
+    };
+}>();
+const uninstallExecuting = ref(false);
+
 const uninstall = async (hymnal: HymnalDefinition) => {
+    try {
+        const plan = await workspace.previewUninstall(hymnal.id);
+        pendingUninstall.value = { hymnal, plan };
+    } catch {
+        // The workspace exposes a translated error and notification.
+    }
+};
+
+const executePendingUninstall = async () => {
+    if (!pendingUninstall.value) return;
+    const { hymnal } = pendingUninstall.value;
+    uninstallExecuting.value = true;
     try {
         const plan = await workspace.uninstallHymnal(hymnal.id);
         uninstallReport.value = { safeCount: plan.safeCount, conflictCount: plan.conflictCount };
         importStates[hymnal.id] = await workspace.loadImport(hymnal.id);
+        pendingUninstall.value = undefined;
         if (plan.conflictCount) addNotice(`${plan.conflictCount} Songs wurden wegen Konflikten nicht entfernt.`, 'warning');
     } catch {
         // The workspace exposes a translated error and notification.
+    } finally {
+        uninstallExecuting.value = false;
     }
 };
 
@@ -203,8 +231,11 @@ onMounted(() => { void load().catch(() => undefined); });
                         <div class="min-w-0 flex-1">
                             <strong class="block text-sm font-semibold">Kein Kirchenkörper festgelegt</strong>
                             <p class="mt-1 text-xs leading-5 text-amber-800">
-                                Für diese ChurchTools-Installation wurde noch kein Kirchenkörper ausgewählt. Ein Administrator muss in den Extension-Einstellungen den zuständigen Kirchenkörper festlegen, bevor Liturgien, Gesangbücher und Abläufe genutzt werden können.
+                                Für diese ChurchTools-Installation wurde noch kein Kirchenkörper ausgewählt. Bitte wähle in den Einstellungen den zuständigen Kirchenkörper aus, um die zugehörigen Gesangbücher, Liturgien und Abläufe nutzen zu können.
                             </p>
+                            <div class="mt-3">
+                                <Button label="Kirchenkörper in den Einstellungen auswählen" icon="fas fa-sliders" size="S" @click="activeSection = 'settings'" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -227,11 +258,56 @@ onMounted(() => { void load().catch(() => undefined); });
                         </div>
                     </section>
 
-                    <section v-else-if="activeSection === 'liturgies'" class="space-y-6"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Deklarative Vorlagen</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Liturgien</h2><p class="mt-2 text-sm text-slate-500">Wähle eine Vorlage nach Gottesdiensttyp und Tradition.</p></div><div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">Kein Kirchenkörper festgelegt. Bitte wende dich an einen Administrator.</div><LiturgyLibrary v-else :liturgies="workspace.availableLiturgies" :organizations="workspace.selectedOrganization ? [workspace.selectedOrganization] : []" @use="useLiturgy" /></section>
+                    <section v-else-if="activeSection === 'liturgies'" class="space-y-6">
+                        <div>
+                            <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Deklarative Vorlagen</div>
+                            <h2 class="mt-2 text-2xl font-bold tracking-tight">Liturgien</h2>
+                            <p class="mt-2 text-sm text-slate-500">Wähle eine Vorlage nach Gottesdiensttyp und Tradition.</p>
+                        </div>
+                        <div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                            <p>Kein Kirchenkörper festgelegt. Bitte wähle in den Einstellungen einen Kirchenkörper aus.</p>
+                            <div class="mt-3">
+                                <Button label="Kirchenkörper in den Einstellungen auswählen" icon="fas fa-sliders" size="S" @click="activeSection = 'settings'" />
+                            </div>
+                        </div>
+                        <LiturgyLibrary v-else :liturgies="workspace.availableLiturgies" :organizations="workspace.selectedOrganization ? [workspace.selectedOrganization] : []" @use="useLiturgy" />
+                    </section>
 
-                    <section v-else-if="activeSection === 'hymnals'" class="space-y-6"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Native ChurchTools Songs</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Gesangbücher</h2><p class="mt-2 text-sm text-slate-500">Installierte Lieder bleiben native ChurchTools-Songs und sind in allen normalen ChurchTools-Oberflächen verfügbar.</p></div><div v-if="uninstallReport" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Icon icon="fas fa-shield-check" size="S" /> Deinstallation geprüft: {{ uninstallReport.safeCount }} sicher entfernt<span v-if="uninstallReport.conflictCount">, {{ uninstallReport.conflictCount }} Konflikte offengehalten</span>.</div><div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">Kein Kirchenkörper festgelegt. Bitte wende dich an einen Administrator.</div><HymnalCatalog v-else :hymnals="workspace.availableHymnals" :installed="findState" :progress="workspace.importProgress" :busy="workspace.operationBusy" @install="install" @retry="install" @uninstall="uninstall" /></section>
+                    <section v-else-if="activeSection === 'hymnals'" class="space-y-6">
+                        <div>
+                            <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Native ChurchTools Songs</div>
+                            <h2 class="mt-2 text-2xl font-bold tracking-tight">Gesangbücher</h2>
+                            <p class="mt-2 text-sm text-slate-500">Installierte Lieder bleiben native ChurchTools-Songs und sind in allen normalen ChurchTools-Oberflächen verfügbar.</p>
+                        </div>
+                        <div v-if="uninstallReport" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Icon icon="fas fa-shield-check" size="S" /> Deinstallation geprüft: {{ uninstallReport.safeCount }} sicher entfernt<span v-if="uninstallReport.conflictCount">, {{ uninstallReport.conflictCount }} Konflikte offengehalten</span>.</div>
+                        <div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                            <p>Kein Kirchenkörper festgelegt. Bitte wähle in den Einstellungen einen Kirchenkörper aus, um die zugehörigen Gesangbücher zu laden.</p>
+                            <div class="mt-3">
+                                <Button label="Kirchenkörper in den Einstellungen auswählen" icon="fas fa-sliders" size="S" @click="activeSection = 'settings'" />
+                            </div>
+                        </div>
+                        <HymnalCatalog v-else :hymnals="workspace.availableHymnals" :installed="findState" :progress="workspace.importProgress" :busy="workspace.operationBusy" @install="install" @retry="install" @uninstall="uninstall" />
+                    </section>
 
-                    <section v-else class="space-y-6"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Extension-Konfiguration</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Einstellungen</h2><p class="mt-2 text-sm text-slate-500">Ressourcen, Verbindung und technische Diagnose für Administratoren.</p></div><div class="grid gap-5 xl:grid-cols-2"><Card class="xl:col-span-2"><template #titleFull><div class="flex items-center justify-between"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Kirchenkörper / Organisation</div><h3 class="mt-1 text-lg font-semibold">Installationsweite Auswahl</h3></div><Icon icon="fas fa-church" size="L" /></div></template><div class="space-y-4"><p class="text-sm text-slate-600">Die Auswahl gilt für die gesamte ChurchTools-Installation. Hauptmodul, Liturgien, Gesangbücher und Lektionare zeigen automatisch nur passende Ressourcen.</p><div class="max-w-md"><SelectDropdown :model-value="workspace.installationSettings.organizationId ?? ''" label="Kirchenkörper" :options="organizationOptions" :emit-id="true" :clear="false" @update:model-value="onOrganizationChange" /></div><div v-if="workspace.selectedOrganization" class="text-xs text-slate-600">Aktuell aktiv: <strong class="text-slate-800">{{ workspace.selectedOrganization.name }}</strong> ({{ workspace.availableLiturgies.length }} Liturgievorlagen, {{ workspace.availableHymnals.length }} Gesangbücher verfügbar)</div><div v-else class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Es ist noch kein Kirchenkörper ausgewählt. Ohne Auswahl können Pfarrer und Anwender keine Liturgien oder Gesangbücher verwenden.</div></div></Card><Card><template #titleFull><div class="flex items-center justify-between"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Verbindung</div><h3 class="mt-1 text-lg font-semibold">ChurchTools</h3></div><Icon icon="fas fa-plug" size="L" /></div></template><div class="divide-y divide-slate-100"><div class="flex justify-between gap-4 py-3 text-sm"><span class="text-slate-500">Status</span><strong>{{ workspace.isOnline ? 'Verbunden' : workspace.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Vorschau ohne Verbindung' }}</strong></div><div class="flex justify-between gap-4 py-3 text-sm"><span class="text-slate-500">Native APIs</span><span>Events · Songs · Agenda · Berechtigungen</span></div><div class="flex justify-between gap-4 py-3 text-sm"><span class="text-slate-500">Speicher</span><span>Custom Module State mit lokalem Fallback</span></div></div></Card><Card><template #titleFull><div class="flex items-center justify-between"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Ressourcen</div><h3 class="mt-1 text-lg font-semibold">Gefilterte Grundlagen</h3></div><Icon icon="fas fa-database" size="L" /></div></template><div class="divide-y divide-slate-100"><div class="flex justify-between py-3 text-sm"><span class="text-slate-500">Organisation</span><strong>{{ workspace.selectedOrganization?.name ?? 'Keine konfiguriert' }}</strong></div><div class="flex justify-between py-3 text-sm"><span class="text-slate-500">Liturgievorlagen</span><strong>{{ workspace.availableLiturgies.length }}</strong></div><div class="flex justify-between py-3 text-sm"><span class="text-slate-500">Gesangbücher</span><strong>{{ workspace.availableHymnals.length }}</strong></div><div class="flex justify-between py-3 text-sm"><span class="text-slate-500">Lektionare</span><strong>{{ workspace.availableLectionaries.length }}</strong></div></div></Card></div></section>
+                    <section v-else class="space-y-6">
+                        <SettingsView
+                            :selected-organization-id="workspace.installationSettings.organizationId"
+                            :organizations="resourceRegistry.organizations"
+                            :available-hymnals="workspace.availableHymnals"
+                            :installed="findState"
+                            :progress="workspace.importProgress"
+                            :busy="workspace.operationBusy"
+                            :is-online="workspace.isOnline"
+                            :api-configured="workspace.apiConfigured"
+                            :available-liturgies-count="workspace.availableLiturgies.length"
+                            :available-lectionaries-count="workspace.availableLectionaries.length"
+                            :uninstall-report="uninstallReport"
+                            @select-organization="onOrganizationChange"
+                            @install="install"
+                            @retry="install"
+                            @uninstall="uninstall"
+                        />
+                    </section>
                 </template>
             </main>
         </div>
@@ -253,6 +329,48 @@ onMounted(() => { void load().catch(() => undefined); });
                 <Button label="Änderungen ansehen" :outlined="true" :disabled="driftBusy" @click="driftDetailsVisible = !driftDetailsVisible" />
                 <Button label="Ablauf beibehalten" :outlined="true" :disabled="driftBusy" @click="keepDrift" />
                 <Button label="Liturgie neu anwenden" :loading="driftBusy" @click="reapplyDrift" />
+            </template>
+        </DialogSmall>
+
+        <DialogSmall
+            v-if="pendingUninstall"
+            title="Gesangbuch deinstallieren: Prüfergebnis"
+            :button="false"
+            :cancel-button="false"
+            :backdrop-close="!uninstallExecuting"
+            @close="pendingUninstall = undefined"
+        >
+            <div class="space-y-3 text-sm text-slate-600">
+                <p>Prüfergebnis für das Gesangbuch <strong>{{ pendingUninstall.hymnal.name }}</strong>:</p>
+                <div class="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                    <div class="flex items-center gap-2 font-semibold text-emerald-800">
+                        <Icon icon="fas fa-check" size="S" />
+                        <span>{{ pendingUninstall.plan.safeCount }} Songs können sicher gelöscht werden.</span>
+                    </div>
+                    <div v-if="pendingUninstall.plan.conflictCount > 0" class="flex items-start gap-2 font-semibold text-amber-800">
+                        <Icon icon="fas fa-triangle-exclamation" size="S" class="mt-0.5 shrink-0" />
+                        <span>{{ pendingUninstall.plan.conflictCount }} Songs wurden verändert oder werden in bestehenden Abläufen verwendet und werden NICHT gelöscht.</span>
+                    </div>
+                    <div v-else class="text-slate-500">
+                        Keine Konflikte gefunden. Alle Songs wurden unverändert belassen und werden nicht in Abläufen verwendet.
+                    </div>
+                </div>
+                <p v-if="pendingUninstall.plan.safeCount > 0" class="text-xs text-slate-500">
+                    Erst mit deiner ausdrücklichen Bestätigung werden die {{ pendingUninstall.plan.safeCount }} unbenutzten Songs aus ChurchTools entfernt.
+                </p>
+                <p v-else class="text-xs text-slate-500">
+                    Es gibt keine sicher entfernbaren Songs. Die vorhandenen Songs bleiben erhalten.
+                </p>
+            </div>
+            <template #footer-right>
+                <Button label="Abbrechen" :outlined="true" :disabled="uninstallExecuting" @click="pendingUninstall = undefined" />
+                <Button
+                    v-if="pendingUninstall.plan.safeCount > 0"
+                    label="Endgültig deinstallieren"
+                    icon="fas fa-trash"
+                    :loading="uninstallExecuting"
+                    @click="executePendingUninstall"
+                />
             </template>
         </DialogSmall>
     </div>

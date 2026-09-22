@@ -59,15 +59,51 @@ const saveError = ref<string>();
 const selectedOrganization = computed(() => props.organizations.find((item) => item.id === selectedOrganizationId.value));
 const selectedLiturgy = computed(() => props.liturgies.find((item) => item.id === selectedLiturgyId.value));
 
+type OptionalSectionItem = {
+    sectionKey: string;
+    label: string;
+};
+
+const findOptionalSections = (nodes: LiturgyNode[], result: OptionalSectionItem[] = []): OptionalSectionItem[] => {
+    nodes.forEach((node) => {
+        if (node.type === 'optionalSection') {
+            result.push({ sectionKey: node.sectionKey, label: node.label ?? node.sectionKey });
+            findOptionalSections(node.nodes, result);
+        } else if (node.type === 'communionSection') {
+            findOptionalSections(node.nodes, result);
+        }
+    });
+    return result;
+};
+
+const availableOptionalSections = computed(() =>
+    selectedLiturgy.value ? findOptionalSections(selectedLiturgy.value.nodes) : []
+);
+
 const flattenNodes = (nodes: LiturgyNode[], result: SlotField[] = []): SlotField[] => {
     nodes.forEach((node) => {
         if (node.type === 'songSlot') result.push({ id: node.id, slot: node.slot, label: node.label ?? 'Lied', kind: 'song', required: node.required });
         if (node.type === 'readingSlot') result.push({ id: node.id, slot: node.slot, label: node.label ?? (node.slot === 'psalm' ? 'Psalm' : `Lesung · ${node.slot}`), kind: 'reading', required: node.required });
         if (node.type === 'sermonSlot') result.push({ id: node.id, slot: node.slot ?? 'sermon', label: node.label ?? 'Predigttext', kind: 'sermon', required: node.required });
         if (node.type === 'freeTextSlot') result.push({ id: node.id, slot: node.slot, label: node.label ?? node.slot, kind: 'text', required: node.required });
-        if (node.type === 'optionalSection' || node.type === 'communionSection') flattenNodes(node.nodes, result);
+        if (node.type === 'optionalSection') {
+            if (optionalSections[node.sectionKey] === true) flattenNodes(node.nodes, result);
+        } else if (node.type === 'communionSection') {
+            flattenNodes(node.nodes, result);
+        }
     });
     return result;
+};
+
+const liturgicalColor = (color?: string): string => {
+    if (!color) return '#4b5d79';
+    const c = color.toLowerCase();
+    if (c === 'weiß' || c === 'weiss' || c === 'white') return '#ffffff';
+    if (c === 'rot' || c === 'red') return '#dc2626';
+    if (c === 'grün' || c === 'gruen' || c === 'green') return '#16a34a';
+    if (c === 'violett' || c === 'purple') return '#7c3aed';
+    if (c === 'schwarz' || c === 'black') return '#1e293b';
+    return '#4b5d79';
 };
 
 const slotFields = computed(() => selectedLiturgy.value ? flattenNodes(selectedLiturgy.value.nodes) : []);
@@ -200,12 +236,33 @@ defineExpose({ saveWithForce: () => save(true) });
                     <Input v-model="sermonSeries" label="Predigtreihe" placeholder="z. B. III" />
                 </div>
                 <div v-if="suggestionLoading" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><Icon icon="fas fa-spinner" size="S" /> Kirchenjahr-Vorschlag wird geladen …</div>
-                <div v-else-if="liturgicalDay" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#4b5d79]"></span><div><strong>{{ liturgicalDay.name }}</strong><span v-if="liturgicalDay.season"> · {{ liturgicalDay.season }}</span><p class="my-0.5 text-[#66717d]">Vorschläge aus {{ suggestionSource === 'external' ? 'dem verbundenen Lektionar' : 'den installierten Ressourcen' }}. Alle Angaben bleiben überschreibbar.</p></div></div>
+                <div v-else-if="liturgicalDay" class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]">
+                    <span
+                        class="mt-1 h-3.5 w-3.5 shrink-0 rounded-full border border-slate-300 shadow-sm"
+                        :style="{ backgroundColor: liturgicalColor(liturgicalDay.color) }"
+                        :title="`Liturgische Farbe: ${liturgicalDay.color ?? 'keine'}`"
+                    ></span>
+                    <div>
+                        <strong>{{ liturgicalDay.name }}</strong>
+                        <span v-if="liturgicalDay.season"> · {{ liturgicalDay.season }}</span>
+                        <span v-if="liturgicalDay.color" class="text-slate-500"> (Liturgische Farbe: {{ liturgicalDay.color }})</span>
+                        <p class="my-0.5 text-[#66717d]">Vorschläge aus {{ suggestionSource === 'external' ? 'dem verbundenen Lektionar' : 'den installierten Ressourcen' }}. Alle Angaben bleiben überschreibbar.</p>
+                        <p v-if="liturgicalDay.weeklyHymn" class="my-0.5 font-medium text-accent-primary">
+                            Wochenlied laut Lektionar: <strong>{{ liturgicalDay.weeklyHymn }}</strong>
+                        </p>
+                    </div>
+                </div>
                 <div v-else class="mt-5 flex items-start gap-2.5 rounded-[7px] bg-[#f5f7fa] px-3.5 py-3 text-xs leading-[1.5] text-[#52606e]"><Icon icon="fas fa-circle-info" size="S" /> Für dieses Datum liegt kein Lektionar-Vorschlag vor. Die Felder können manuell ausgefüllt werden.</div>
             </Card>
 
             <Card>
                 <template #titleFull><div class="flex items-start justify-between gap-5"><div><div class="text-[11px] font-bold uppercase tracking-[.055em] text-[#66717d]">Variable Teile</div><h3 class="mt-1 text-[18px] font-semibold tracking-[-.02em]">Nur die relevanten Felder</h3></div><Icon icon="fas fa-sliders" size="L" /></div></template>
+                <div v-if="availableOptionalSections.length > 0" class="mb-4 flex flex-wrap gap-4 border-b border-slate-200 pb-3">
+                    <label v-for="section in availableOptionalSections" :key="section.sectionKey" class="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+                        <input v-model="optionalSections[section.sectionKey]" type="checkbox" class="rounded border-slate-300 text-accent-primary" />
+                        <span>{{ section.label }}</span>
+                    </label>
+                </div>
                 <div class="grid grid-cols-1 gap-x-4 gap-y-[18px] min-[561px]:grid-cols-2">
                     <template v-for="field in slotFields" :key="field.id">
                         <SongPicker v-if="field.kind === 'song'" :label="field.label" :required="field.required" :songs="songs" :search-songs="searchSongs" :model-value="songSlots[field.slot]" @update:model-value="songSlots[field.slot] = $event" />

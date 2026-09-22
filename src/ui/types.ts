@@ -37,4 +37,6 @@ export type WorkspaceSong = {
     author?: string | null;
     category?: { id?: number; name?: string };
     arrangements?: Array<{ id: number; name?: string; isDefault?: boolean }>;
+    hymnalName?: string;
+    number?: string;
 };

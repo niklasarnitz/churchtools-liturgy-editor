@@ -99,8 +99,10 @@ Alle mitgelieferten Daten liegen versioniert unter `src/data/`:
   `lcms`; jede Organisation darf mehrere Hymnals, Liturgien und Lektionare
   referenzieren.
 - `hymnals/`: `HymnalDefinition` mit `id`, positiver `version`, Name,
-  Organisationen, Sprache und `HymnalSong[]`. Demo-Einträge enthalten keine
-  Liedtexte oder Noten.
+  Organisationen, Sprache und `HymnalSong[]`. Derzeit registrierte Gesangbücher:
+  - `eg-baden`: Evangelisches Gesangbuch – Baden (786 Lieder) für die Evangelische Kirche Baden (`ekiba`)
+  - `elkg2`: Evangelisch-Lutherisches Kirchengesangbuch² (864 Lieder) für die SELK (`selk`)
+  - `lutheran-service-book`: Lutheran Service Book (636 Lieder) für die LCMS (`lcms`)
 - `liturgies/`: versionierte deklarative DSL mit stabilen Node-IDs. Unterstützt
   `heading`, `fixedText`, `rubric`, `songSlot`, `readingSlot`, `sermonSlot`,
   `creed`, `prayer`, `optionalSection`, `freeTextSlot` und
@@ -110,10 +112,9 @@ Alle mitgelieferten Daten liegen versioniert unter `src/data/`:
   kirchliche Datenbank.
 - `registry.ts`: gemeinsame Registry für Validierung und Domain-Tests.
 
-Die Demo-Daten sind `eg-baden-demo` (fünf erfundene Songs),
-`baden-predigtgottesdienst-demo`, `selk-hauptgottesdienst-demo` und
-`demo-minimal`. Sie dürfen nicht als offizielle kirchliche Inhalte beworben
-werden.
+Die Demo-Vorlagen und -Daten sind `baden-predigtgottesdienst-demo`,
+`selk-hauptgottesdienst-demo` und `demo-minimal`. Sie dürfen nicht als offizielle
+kirchliche Inhalte beworben werden.
 
 ### Neue Organisation hinzufügen
 

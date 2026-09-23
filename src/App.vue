@@ -224,7 +224,7 @@ const handleSaved = async () => {
     selectedEvent.value = undefined;
     unmanagedAgenda.value = undefined;
     addNotice('Gottesdienst gespeichert.', 'success');
-    await workspace.loadEvents();
+    await workspace.refreshEvents();
 };
 
 const openDrift = (value: AgendaDriftView) => {
@@ -254,7 +254,7 @@ const keepDrift = async () => {
         await workspace.keepAgenda(drift.value.event.id);
         drift.value = undefined;
         driftDetailsVisible.value = false;
-        await workspace.loadEvents();
+        await workspace.refreshEvents();
     } catch {
         // The workspace exposes the translated ChurchTools error.
     } finally {
@@ -396,10 +396,10 @@ onMounted(() => { void load().catch(() => undefined); });
 
                 <template v-else>
                     <section v-if="activeSection === 'services'" class="space-y-6">
-                        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Sonntage und Feiertage</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Gottesdienste</h2><p class="mt-2 text-sm text-slate-500">{{ canWriteAgenda ? 'Wähle einen Gottesdienst aus, um den Ablauf zu bearbeiten.' : 'Lesemodus: Du kannst Abläufe ansehen. Zum Bearbeiten ist ChurchTools-Berechtigung „churchservice / edit agenda“ erforderlich.' }}</p></div><div class="flex flex-wrap items-end gap-3"><label class="grid gap-1 text-xs font-medium text-slate-600">Gottesdienste ab<input type="date" :value="workspace.eventFrom" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" @change="workspace.setEventFrom(($event.target as HTMLInputElement).value)" /></label><Button label="Aktualisieren" icon="fas fa-rotate-right" :outlined="true" :loading="workspace.eventStatus === 'loading'" @click="workspace.loadEvents()" /></div></div>
+                        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Sonntage und Feiertage</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Gottesdienste</h2><p class="mt-2 text-sm text-slate-500">{{ canWriteAgenda ? 'Wähle einen Gottesdienst aus, um den Ablauf zu bearbeiten.' : 'Lesemodus: Du kannst Abläufe ansehen. Zum Bearbeiten ist ChurchTools-Berechtigung „churchservice / edit agenda“ erforderlich.' }}</p></div><div class="flex flex-wrap items-end gap-3"><label class="grid gap-1 text-xs font-medium text-slate-600">Gottesdienste ab<input type="date" :value="workspace.eventFrom" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" @change="workspace.setEventFrom(($event.target as HTMLInputElement).value)" /></label><Button label="Aktualisieren" icon="fas fa-rotate-right" :outlined="true" :loading="workspace.eventStatus === 'loading'" @click="workspace.refreshEvents()" /></div></div>
                         <div v-if="workspace.eventStatus === 'loading'"><LoadingMessage message="Gottesdienste werden geladen …" /></div>
-                        <div v-else-if="workspace.eventStatus === 'error'"><EmptyState title="Gottesdienste konnten nicht geladen werden" icon="fas fa-circle-exclamation"><Button label="Erneut versuchen" icon="fas fa-rotate-right" :outlined="true" @click="workspace.loadEvents()" /></EmptyState></div>
-                        <div v-else-if="workspace.events.length === 0"><EmptyState title="Keine Gottesdienste ab diesem Datum gefunden" icon="fas fa-calendar-days"><Button label="Gottesdienstliste aktualisieren" icon="fas fa-rotate-right" :outlined="true" @click="workspace.loadEvents()" /></EmptyState></div>
+                        <div v-else-if="workspace.eventStatus === 'error'"><EmptyState title="Gottesdienste konnten nicht geladen werden" icon="fas fa-circle-exclamation"><Button label="Erneut versuchen" icon="fas fa-rotate-right" :outlined="true" @click="workspace.refreshEvents()" /></EmptyState></div>
+                        <div v-else-if="workspace.events.length === 0"><EmptyState title="Keine Gottesdienste ab diesem Datum gefunden" icon="fas fa-calendar-days"><Button label="Gottesdienstliste aktualisieren" icon="fas fa-rotate-right" :outlined="true" @click="workspace.refreshEvents()" /></EmptyState></div>
                         <div v-else class="grid gap-4">
                             <Card v-for="event in workspace.events" :key="event.id">
                                 <template #full>

@@ -69,6 +69,7 @@ const runSearch = async (value: string) => {
 
 watch(query, (value) => {
     if (debounceTimer !== undefined) window.clearTimeout(debounceTimer);
+    if (!isOpen.value) return;
     debounceTimer = window.setTimeout(() => void runSearch(value), 120);
 });
 

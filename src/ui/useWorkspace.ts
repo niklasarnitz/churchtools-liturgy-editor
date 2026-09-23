@@ -17,6 +17,7 @@ import type { ManagedAgenda } from '../domain/managed-agendas';
 import type { SavedBlock } from '../domain/liturgies/blocks';
 import type { WorkspaceEvent, WorkspaceSong, WorkspaceStatus, ImportProgressView, AgendaDriftView } from './types';
 import { createWorkspaceQueryClient, executeMutation } from './query';
+import { workspaceQueryKeys } from './workspaceQueryKeys';
 
 const extensionKey = import.meta.env.VITE_KEY || 'liturgy-editor';
 const eventPageSize = 10;
@@ -56,6 +57,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const isOnline = ref(false);
     const apiConfigured = ref(Boolean(options.baseUrl));
     const currentUserId = ref<number>();
+    const queryKeys = () => workspaceQueryKeys(options.baseUrl ?? 'host', currentUserId.value);
     const canManageSettings = ref(false);
     const canWriteAgenda = ref(false);
     const importProgress = ref<ImportProgressView | undefined>();
@@ -91,7 +93,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         settingsStatus.value = 'loading';
         try {
             const settings = await queryClient.fetchQuery({
-                queryKey: ['installation-settings'],
+                queryKey: queryKeys().settings,
                 queryFn: () => application.getInstallationSettings(),
             });
             installationSettings.value = settings;
@@ -113,8 +115,8 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                 (nextOrganizationId: string | undefined) => application.updateInstallationSettings({ organizationId: nextOrganizationId }),
                 organizationId,
             );
-            queryClient.setQueryData(['installation-settings'], updated);
-            await queryClient.invalidateQueries({ queryKey: ['hymnal-import'] });
+            queryClient.setQueryData(queryKeys().settings, updated);
+            await queryClient.invalidateQueries({ queryKey: queryKeys().imports() });
             installationSettings.value = updated;
             notify('Kirchenkörper erfolgreich gespeichert.', 'success');
             return updated;
@@ -161,8 +163,8 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         eventStatus.value = 'loading'; error.value = undefined;
         try {
             const loaded = await queryClient.fetchQuery({
-                queryKey: ['upcoming-events', eventPageFrom, page],
-                staleTime: 0,
+                queryKey: queryKeys().events(eventPageFrom, page),
+                staleTime: 2 * 60_000,
                 queryFn: () => application.getUpcomingEvents({
                     from: eventPageFrom,
                     limit: eventPageSize,
@@ -191,7 +193,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                     const current = events.value.find((candidate) => candidate.id === event.id);
                     if (current) current.canEditAgenda = allowed;
                 });
-                void application.inspectEvent(event).then((inspected) => {
+                void queryClient.fetchQuery({
+                    queryKey: queryKeys().inspection(event.id),
+                    queryFn: () => application.inspectEvent(event),
+                    staleTime: 2 * 60_000,
+                }).then((inspected) => {
                     if (inspectionToken !== eventInspectionToken) return;
                     const current = events.value.find((candidate) => candidate.id === event.id);
                     if (current) current.status = inspected.status;
@@ -209,6 +215,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
 
     const loadPreviousEvents = (): Promise<void> => loadEvents(Math.max(1, eventPage.value - 1));
     const loadNextEvents = (): Promise<void> => loadEvents(eventPage.value + 1);
+    const refreshEvents = async (): Promise<void> => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys().events(eventPageFrom, eventPage.value) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys().inspections() });
+        await loadEvents();
+    };
     const setEventFrom = async (value: string): Promise<void> => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
         eventFrom.value = value;
@@ -223,7 +234,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             // Larger values fail the complete workspace load with a validation
             // error before the picker can perform its own focused searches.
             const loaded = await queryClient.fetchQuery({
-                queryKey: ['songs', '', 200],
+                queryKey: queryKeys().songSearch('', 200),
                 queryFn: () => application.searchSongs('', { limit: 200 }),
             });
             songs.value = loaded
@@ -270,8 +281,8 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             );
             importState.value = result.state;
             importProgress.value = { operation: 'install', hymnalId: hymnal.id, completed: result.state.completed, failed: result.state.failed, total: result.state.total, percent: result.state.total ? Math.round(((result.state.completed + result.state.failed) / result.state.total) * 100) : 100, status: result.state.status };
-            queryClient.setQueryData(['hymnal-import', hymnal.id], result.state);
-            await queryClient.invalidateQueries({ queryKey: ['songs'] });
+            queryClient.setQueryData(queryKeys().import(hymnal.id), result.state);
+            await queryClient.invalidateQueries({ queryKey: queryKeys().songs() });
             notify(result.state.failed ? `${result.state.completed} Lieder importiert, ${result.state.failed} benötigen einen erneuten Versuch.` : 'Gesangbuch erfolgreich installiert.', result.state.failed ? 'warning' : 'success');
             await loadSongs();
             return result.state;
@@ -299,11 +310,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             );
             importState.value = await application.repositories.imports.load(hymnalId);
             if (importState.value) {
-                queryClient.setQueryData(['hymnal-import', hymnalId], importState.value);
+                queryClient.setQueryData(queryKeys().import(hymnalId), importState.value);
             } else {
-                queryClient.removeQueries({ queryKey: ['hymnal-import', hymnalId], exact: true });
+                queryClient.removeQueries({ queryKey: queryKeys().import(hymnalId), exact: true });
             }
-            await queryClient.invalidateQueries({ queryKey: ['songs'] });
+            await queryClient.invalidateQueries({ queryKey: queryKeys().songs() });
             await loadSongs();
             const retainedCount = result.state?.failed ?? result.plan.conflictCount;
             notify(`${result.state?.completed ?? 0} Songs sicher entfernt.${retainedCount ? ` ${retainedCount} Songs bleiben erhalten.` : ''}`, retainedCount ? 'warning' : 'success');
@@ -314,7 +325,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const loadImport = async (hymnalId: string): Promise<HymnalImportState | undefined> => {
         try {
             importState.value = await queryClient.fetchQuery({
-                queryKey: ['hymnal-import', hymnalId],
+                queryKey: queryKeys().import(hymnalId),
                 queryFn: () => application.repositories.imports.load(hymnalId),
             });
             return importState.value;
@@ -330,9 +341,10 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
 
     const searchSongs = async (query: string): Promise<WorkspaceSong[]> => {
         try {
+            const normalizedQuery = query.trim();
             const results = await queryClient.fetchQuery({
-                queryKey: ['songs', query.trim(), 50],
-                queryFn: () => application.searchSongs(query, { limit: 50 }),
+                queryKey: queryKeys().songSearch(normalizedQuery.toLocaleLowerCase(), 50),
+                queryFn: () => application.searchSongs(normalizedQuery, { limit: 50 }),
             });
             isOnline.value = true;
             return results
@@ -351,7 +363,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
 
     const createArrangement = async (songId: number, input: { name: string; description?: string }): Promise<{ id: number; name?: string; isDefault?: boolean }> => {
         const created = await application.createSongArrangement(songId, input);
-        await queryClient.invalidateQueries({ queryKey: ['songs'] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys().songs() });
         songs.value = songs.value.map((song) => song.id === songId ? { ...song, arrangements: [...(song.arrangements ?? []), created] } : song);
         return created;
     };
@@ -388,6 +400,8 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                 variantKey: options.variantKey,
                 selectedDate: options.selectedDate,
             });
+            await queryClient.invalidateQueries({ queryKey: queryKeys().inspection(event.id) });
+            await queryClient.invalidateQueries({ queryKey: queryKeys().events(eventPageFrom, eventPage.value) });
             return result.managedAgenda;
         } catch (cause) {
             // A native change can happen while the editor is open. Surface the
@@ -465,6 +479,8 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             if ('status' in resolved && resolved.status === 'externally-changed') {
                 throw new Error('Der native Ablauf ist nicht mehr vorhanden und kann nicht beibehalten werden.');
             }
+            await queryClient.invalidateQueries({ queryKey: queryKeys().inspection(eventId) });
+            await queryClient.invalidateQueries({ queryKey: queryKeys().events(eventPageFrom, eventPage.value) });
             notify('Die aktuelle ChurchTools-Version des Ablaufs bleibt erhalten.', 'success');
         } catch (cause) {
             const message = userFacingChurchToolsMessage(cause);
@@ -474,5 +490,5 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         }
     };
 
-    return reactive({ events, eventPage, eventHasNextPage, eventFrom, songs, eventStatus, songStatus, error, isOnline, apiConfigured, lectionaryConfigured, currentUserId, canManageSettings, canWriteAgenda, importProgress, importState, operationBusy, installationSettings, settingsStatus, selectedOrganization, organizations, availableLiturgies, availableHymnals, availableLectionaries, canEditEvent, loadEvents, loadPreviousEvents, loadNextEvents, setEventFrom, loadSongs, loadCapabilities, loadSettings, saveInstallationOrganization, loadImport, importHymnal, previewUninstall, uninstallHymnal, searchSongs, createArrangement, loadSavedBlocks, saveSavedBlocks, saveAgenda, loadEditorState, inspectAgenda, inspectReadOnlyAgenda, suggestLiturgicalDay, keepAgenda, notify });
+    return reactive({ events, eventPage, eventHasNextPage, eventFrom, songs, eventStatus, songStatus, error, isOnline, apiConfigured, lectionaryConfigured, currentUserId, canManageSettings, canWriteAgenda, importProgress, importState, operationBusy, installationSettings, settingsStatus, selectedOrganization, organizations, availableLiturgies, availableHymnals, availableLectionaries, canEditEvent, loadEvents, loadPreviousEvents, loadNextEvents, refreshEvents, setEventFrom, loadSongs, loadCapabilities, loadSettings, saveInstallationOrganization, loadImport, importHymnal, previewUninstall, uninstallHymnal, searchSongs, createArrangement, loadSavedBlocks, saveSavedBlocks, saveAgenda, loadEditorState, inspectAgenda, inspectReadOnlyAgenda, suggestLiturgicalDay, keepAgenda, notify });
 };

@@ -46,6 +46,7 @@ export type HymnalImportState = {
 export interface HymnalImportStateRepository {
     load(hymnalId: string): Promise<HymnalImportState | undefined>;
     save(state: HymnalImportState): Promise<void>;
+    delete(hymnalId: string): Promise<void>;
 }
 
 export interface HymnalImportLogger {

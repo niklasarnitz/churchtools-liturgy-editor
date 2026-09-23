@@ -17,4 +17,8 @@ export class JsonHymnalImportStateRepository implements HymnalImportStateReposit
     save(state: HymnalImportState): Promise<void> {
         return this.store.set(`${this.keyPrefix}:${state.hymnalId}`, state);
     }
+
+    delete(hymnalId: string): Promise<void> {
+        return this.store.delete(`${this.keyPrefix}:${hymnalId}`);
+    }
 }

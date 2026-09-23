@@ -11,9 +11,23 @@ export type LiturgyNodeType =
     | 'freeTextSlot'
     | 'communionSection';
 
+export interface LiturgyNodePrintOptions {
+    /** Marks words spoken or sung by the congregation. */
+    audience?: 'congregation';
+    alignment?: 'left' | 'center' | 'indent';
+    /** Adds this variable node to the overview on the first print column. */
+    summaryLabel?: string;
+    /** Prints only the body so it can continue the preceding agenda item. */
+    continuation?: boolean;
+    columnBreakBefore?: boolean;
+}
+
 export interface LiturgyNodeBase {
     id: string;
     label?: string;
+    /** Native ChurchTools responsible text, usually a service placeholder such as `[Predigt]`. */
+    responsible?: string;
+    print?: LiturgyNodePrintOptions;
 }
 
 export interface HeadingNode extends LiturgyNodeBase {
@@ -101,5 +115,11 @@ export interface LiturgyDefinition {
     tradition?: string;
     serviceType?: string;
     lectionaryId?: string;
+    optionalSectionMode?: 'multiple' | 'single';
+    print?: {
+        congregationName: string;
+        participantColor?: string;
+        participantNotice?: string;
+    };
     nodes: LiturgyNode[];
 }

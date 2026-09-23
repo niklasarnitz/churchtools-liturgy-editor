@@ -1,3 +1,13 @@
 @import '../utils/reset.css' layer(base);
 @import '@churchtools/styleguide/tailwind';
 @source '../**/*.{vue,ts}';
+
+/* The host styleguide resets Card slot spacing. Keep all Card title and body
+   slots consistently inset, regardless of which view renders the component. */
+.c-card__title {
+    padding: 1.5rem 1.75rem 0 !important;
+}
+
+.c-card__main {
+    padding: 1.5rem 1.75rem !important;
+}

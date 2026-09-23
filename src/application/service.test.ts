@@ -3,8 +3,8 @@ import { ChurchToolsError } from '../churchtools/errors';
 import type { JsonStateStore } from '../churchtools/customModuleStore';
 import type { NativeAgenda, NativeEvent } from '../churchtools/types';
 import type { EventListQuery } from '../churchtools/events';
-import { resourceRegistry } from '../data/registry';
 import type { HymnalUsageChecker } from '../domain/imports/uninstaller';
+import { testBadenLiturgy, testResourceRegistry } from '../test-fixtures/resources';
 import { LiturgyEditorApplication } from './service';
 
 class MemoryStore implements JsonStateStore {
@@ -14,7 +14,7 @@ class MemoryStore implements JsonStateStore {
     async delete(key: string): Promise<void> { this.values.delete(key); }
 }
 
-const event = { id: 10, name: 'Sonntag', startDate: '2026-09-27T10:00:00Z', calendar: { id: 4 } } as unknown as NativeEvent;
+const event = { id: 10, name: 'Sonntag', startDate: '2026-09-27T10:00:00Z', calendar: { domainIdentifier: '4' } } as unknown as NativeEvent;
 
 function dependencies(overrides: Record<string, unknown> = {}) {
     let agenda: NativeAgenda | undefined;
@@ -30,14 +30,14 @@ function dependencies(overrides: Record<string, unknown> = {}) {
         deleteItem: async () => undefined,
     };
     const songs = {
-        listCategories: async () => [], createCategory: async () => ({ id: 1, name: 'Demo' }), get: async () => ({ id: 1, name: 'Song' }),
+        listCategories: async () => [], createCategory: async () => ({ id: 1, name: 'Test' }), get: async () => ({ id: 1, name: 'Song' }),
         create: async () => ({ id: 1, name: 'Song' }), update: async () => ({ id: 1, name: 'Song' }), delete: async () => undefined,
         listArrangements: async () => [], createArrangement: async () => ({ id: 50, name: 'Standard', isDefault: true }), list: async () => [],
     };
     const permissions = { assertAgendaRead: async () => undefined, assertAgendaWrite: async () => undefined, assertSongRead: async () => undefined, assertSongWrite: async () => undefined };
     return {
         events: { get: async () => event, list: async () => [event] }, agendas, songs, permissions,
-        state: new MemoryStore(), resources: resourceRegistry,
+        state: new MemoryStore(), resources: testResourceRegistry,
         ...overrides,
     } as never;
 }
@@ -62,7 +62,7 @@ describe('LiturgyEditorApplication workflow', () => {
         );
     });
 
-    it('queries upcoming services with the ChurchTools forward direction', async () => {
+    it('loads upcoming services in pages of ten by default', async () => {
         let receivedQuery: EventListQuery | undefined;
         const app = new LiturgyEditorApplication(dependencies({
             events: {
@@ -74,28 +74,36 @@ describe('LiturgyEditorApplication workflow', () => {
             },
         }));
 
-        await app.getUpcomingServices({ from: '2026-09-20', limit: 25 });
-
-        expect(receivedQuery?.direction).toBe('forward');
-    });
-
-    it('uses a bounded date range without direction because ChurchTools ignores to when direction is present', async () => {
-        let receivedQuery: EventListQuery | undefined;
-        const app = new LiturgyEditorApplication(dependencies({
-            events: {
-                get: async () => event,
-                list: async (query: EventListQuery) => {
-                    receivedQuery = query;
-                    return [event];
-                },
-            },
-        }));
-
-        await app.getUpcomingServices({ from: '2026-09-20', to: '2027-01-18', limit: 25 });
+        await app.getUpcomingEvents({ from: '2026-09-20' });
 
         expect(receivedQuery).toEqual({
             from: '2026-09-20',
-            to: '2027-01-18',
+            direction: 'forward',
+            limit: 10,
+            page: 1,
+            canceled: false,
+        });
+    });
+
+    it('requests later upcoming-service pages from the same start date', async () => {
+        let receivedQuery: EventListQuery | undefined;
+        const app = new LiturgyEditorApplication(dependencies({
+            events: {
+                get: async () => event,
+                list: async (query: EventListQuery) => {
+                    receivedQuery = query;
+                    return [event];
+                },
+            },
+        }));
+
+        await app.getUpcomingEvents({ from: '2026-09-20', page: 3 });
+
+        expect(receivedQuery).toEqual({
+            from: '2026-09-20',
+            direction: 'forward',
+            limit: 10,
+            page: 3,
             canceled: false,
         });
     });
@@ -183,7 +191,7 @@ describe('LiturgyEditorApplication workflow', () => {
             closingSong: { kind: 'song' as const, songId: 3, arrangementId: 52, title: 'Segen' },
             sermon: 'Mt 22,34–46',
         };
-        const saved = await app.saveAgenda({ eventId: 10, organizationId: 'ekiba', liturgyId: 'baden-predigtgottesdienst-demo', slots: values });
+        const saved = await app.saveAgenda({ eventId: 10, organizationId: 'ekiba', liturgyId: testBadenLiturgy.id, slots: values });
         expect(saved.agenda.items[0].type).toBe('text');
         expect(saved.agenda.items.some((item) => item.type === 'song' && item.arrangementId === 50)).toBe(true);
         expect((await app.inspectEvent(10)).status).toBe('complete');
@@ -194,6 +202,91 @@ describe('LiturgyEditorApplication workflow', () => {
         expect(inspected.status).toBe('externally-changed');
         const kept = await app.resolveAgendaConflict(10, 'keep');
         expect('status' in kept && kept.status).toBe('complete');
+    });
+
+    it('uses the node order arranged in the visual editor', async () => {
+        const app = new LiturgyEditorApplication(dependencies());
+
+        const saved = await app.saveAgenda({
+            eventId: 10,
+            organizationId: 'ekiba',
+            liturgyId: testBadenLiturgy.id,
+            nodes: [
+                { id: 'closing', type: 'heading', text: 'Sendung und Segen' },
+                { id: 'opening', type: 'heading', text: 'Eröffnung' },
+            ],
+        });
+
+        expect(saved.agenda.items.map((item) => item.title)).toEqual([
+            'Liturgie-Editor',
+            'Sendung und Segen',
+            'Eröffnung',
+        ]);
+    });
+
+    it('writes song comments, structured sermon data, and service placeholders to native agenda fields', async () => {
+        const customResources = structuredClone(testResourceRegistry);
+        customResources.liturgies = [{
+            id: 'storage-mapping-test',
+            version: 1,
+            organizationId: 'ekiba',
+            name: 'Storage mapping test',
+            tags: [],
+            language: 'de',
+            nodes: [
+                { id: 'song', type: 'songSlot', slot: 'openingSong', required: true, label: 'Eingangslied', responsible: '[Musik]' },
+                { id: 'sermon', type: 'sermonSlot', required: true, label: 'Predigt', responsible: '[Predigt]' },
+            ],
+        }];
+        const app = new LiturgyEditorApplication(dependencies({ resources: customResources }));
+
+        const saved = await app.saveAgenda({
+            eventId: 10,
+            organizationId: 'ekiba',
+            liturgyId: 'storage-mapping-test',
+            slots: {
+                openingSong: { kind: 'song', songId: 1, arrangementId: 50, title: 'Jesus nimmt die Sünder an', comment: 'Strophen 1, 3 und 4' },
+                sermon: { kind: 'sermon', title: 'Schuld erlassen!', text: 'Micha 7,18–20' },
+            },
+        });
+
+        expect(saved.agenda.items).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'song', title: 'Eingangslied', note: 'Strophen 1, 3 und 4', responsible: '[Musik]' }),
+            expect.objectContaining({ type: 'text', title: 'Schuld erlassen!', note: 'Micha 7,18–20', responsible: '[Predigt]' }),
+        ]));
+    });
+
+    it('creates an agenda using the calendar domain identifier from the event API', async () => {
+        const calendarIds: Array<number | undefined> = [];
+        const apiEvent = {
+            id: 10,
+            name: 'Sonntag',
+            startDate: '2026-09-27T10:00:00Z',
+            calendar: { domainIdentifier: '4', title: 'Gottesdienste' },
+        } as unknown as NativeEvent;
+        const app = new LiturgyEditorApplication(dependencies({
+            events: { get: async () => apiEvent, list: async () => [apiEvent] },
+            permissions: {
+                assertAgendaRead: async () => undefined,
+                assertAgendaWrite: async (calendarId?: number) => { calendarIds.push(calendarId); },
+                assertSongRead: async () => undefined,
+                assertSongWrite: async () => undefined,
+            },
+        }));
+
+        const saved = await app.saveAgenda({
+            eventId: 10,
+            organizationId: 'ekiba',
+            liturgyId: testBadenLiturgy.id,
+            slots: {
+                openingSong: { kind: 'song', songId: 1, arrangementId: 50, title: 'Morgenlicht' },
+                closingSong: { kind: 'song', songId: 3, arrangementId: 52, title: 'Segen' },
+                sermon: 'Mt 22,34–46',
+            },
+        });
+
+        expect(calendarIds).toEqual([4]);
+        expect(saved.agenda.calendarId).toBe(4);
     });
 
     it('translates missing write permission before an import starts', async () => {
@@ -228,6 +321,16 @@ describe('LiturgyEditorApplication workflow', () => {
         });
     });
 
+    it('does not fall back to bundled lectionary data', async () => {
+        const app = new LiturgyEditorApplication(dependencies());
+
+        await expect(app.suggestLiturgicalDay({
+            date: '2026-09-20',
+            organizationId: 'ekiba',
+            liturgyId: testBadenLiturgy.id,
+        })).resolves.toEqual({ day: undefined, source: 'none', overrides: {} });
+    });
+
     it('rejects initial agenda save if native agenda items count does not match generated items', async () => {
         const deps = dependencies({
             agendas: {
@@ -245,7 +348,7 @@ describe('LiturgyEditorApplication workflow', () => {
         await expect(app.saveAgenda({
             eventId: 10,
             organizationId: 'ekiba',
-            liturgyId: 'baden-predigtgottesdienst-demo',
+            liturgyId: testBadenLiturgy.id,
             slots: values,
         })).rejects.toThrow('erwartet wurden');
 
@@ -277,7 +380,7 @@ describe('LiturgyEditorApplication workflow', () => {
         await expect(app.saveAgenda({
             eventId: 10,
             organizationId: 'ekiba',
-            liturgyId: 'baden-predigtgottesdienst-demo',
+            liturgyId: testBadenLiturgy.id,
             slots: values,
         })).rejects.toThrow('Ablaufpunkt an Position 1 hat');
 
@@ -311,7 +414,7 @@ describe('LiturgyEditorApplication workflow', () => {
         await expect(app.saveAgenda({
             eventId: 10,
             organizationId: 'ekiba',
-            liturgyId: 'baden-predigtgottesdienst-demo',
+            liturgyId: testBadenLiturgy.id,
             slots: values,
         })).rejects.toThrow('abweichende Arrangement-ID');
 

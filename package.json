@@ -22,8 +22,10 @@
         "vitest": "^3.2.7"
     },
     "dependencies": {
+        "@churchtools/api-types": "file:../../work/churchtools/frontend-packages/api-types",
         "@churchtools/extension-points": "github:ChurchTools/churchtools-extension-points#master",
         "@churchtools/styleguide": "file:../../work/churchtools/frontend-packages/styleguide",
+        "@tanstack/vue-query": "^5.103.2",
         "vue": "^3.5.43"
     }
 }

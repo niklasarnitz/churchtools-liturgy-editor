@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import { organizationsById } from '../../data/organizations';
-import { lectionaries } from '../../data/lectionaries';
-import { liturgiesById } from '../../data/liturgies';
+import { testBadenLiturgy, testLectionary } from '../../test-fixtures/resources';
 import { resolveLiturgicalDay } from './resolver';
+
+const lectionaries = [testLectionary];
 
 describe('lectionary resolver', () => {
     it('selects a liturgy-linked lectionary and returns a suggestion', () => {
         const result = resolveLiturgicalDay({
             date: '2026-09-20',
             organization: organizationsById.ekiba,
-            liturgy: liturgiesById['baden-predigtgottesdienst-demo'],
+            liturgy: testBadenLiturgy,
             lectionaries,
         });
 
-        expect(result?.name).toBe('17. Sonntag nach Trinitatis (Demo)');
+        expect(result?.name).toBe('17. Sonntag nach Trinitatis');
         expect(result?.readings.gospel?.reference).toBe('Lk 14,1–11');
     });
 
@@ -22,7 +23,7 @@ describe('lectionary resolver', () => {
         const result = resolveLiturgicalDay({
             date: new Date(2026, 8, 20),
             organization: organizationsById.selk,
-            lectionaryId: 'demo-minimal',
+            lectionaryId: testLectionary.id,
             lectionaries,
             overrides: {
                 sermonSeries: 'Manuelle Reihe',

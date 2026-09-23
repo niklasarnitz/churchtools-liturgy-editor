@@ -42,6 +42,11 @@ export type HymnalUninstallState = {
     updatedAt: string;
 };
 
+export type UninstallProgress = Pick<HymnalUninstallState, 'status' | 'total' | 'completed' | 'failed'> & {
+    percent: number;
+    hymnalSongId?: string;
+};
+
 export interface HymnalUsageChecker {
     isSongUsed(songId: number): Promise<boolean>;
     /**
@@ -78,9 +83,7 @@ export class HymnalUninstaller {
         );
         const candidates: UninstallCandidate[] = [];
         const conflicts: UninstallConflict[] = [];
-        for (const mapping of Object.values(state.mappings)) {
-            await this.inspectMapping(mapping, sharedSongIds, candidates, conflicts);
-        }
+        await this.inspectMappings(Object.values(state.mappings), sharedSongIds, candidates, conflicts);
         return {
             hymnalId,
             dryRun: true,
@@ -93,7 +96,12 @@ export class HymnalUninstaller {
 
     async uninstall(
         hymnalId: string,
-        options: { otherStates?: readonly HymnalImportState[]; now?: () => string } = {},
+        options: {
+            otherStates?: readonly HymnalImportState[];
+            now?: () => string;
+            plan?: HymnalUninstallPlan;
+            onProgress?: (progress: UninstallProgress) => void | Promise<void>;
+        } = {},
     ): Promise<HymnalUninstallState> {
         let state = await this.repository.load(hymnalId);
         if (!state) {
@@ -107,41 +115,19 @@ export class HymnalUninstaller {
                 updatedAt: (options.now ?? (() => new Date().toISOString()))(),
             };
         }
-        const plan = await this.dryRun(hymnalId, options.otherStates);
+        const plan = options.plan ?? await this.dryRun(hymnalId, options.otherStates);
         const timestamp = options.now ?? (() => new Date().toISOString());
         let completed = 0;
         let processed = 0;
-        const sharedSongIds = new Set(
-            (options.otherStates ?? [])
-                .filter((other) => other.hymnalId !== hymnalId)
-                .flatMap((other) => Object.values(other.mappings).map((mapping) => mapping.churchToolsSongId)),
-        );
         state.status = 'running';
         await this.repository.save({ ...state, status: 'running', completed: 0, failed: plan.conflicts.length });
+        await this.emitProgress(plan.candidates.length + plan.conflicts.length, completed, plan.conflicts.length, 'running', options);
         for (const candidate of plan.candidates) {
             processed += 1;
-            // Reload the mapping immediately before validating/deleting. A
-            // stale in-memory snapshot must not turn a changed or removed
-            // mapping into a destructive action.
             const latestState = await this.repository.load(hymnalId);
             if (latestState) state = latestState;
             const mapping = state.mappings[candidate.hymnalSongId];
-            const revalidatedCandidates: UninstallCandidate[] = [];
-            const revalidationConflicts: UninstallConflict[] = [];
             if (!mapping || mapping.churchToolsSongId !== candidate.churchToolsSongId) {
-                revalidationConflicts.push({
-                    hymnalSongId: candidate.hymnalSongId,
-                    churchToolsSongId: candidate.churchToolsSongId,
-                    reason: 'lookup-failed',
-                    message: 'Das Import-Mapping ist vor dem Löschen nicht mehr unverändert vorhanden.',
-                });
-            } else {
-                // The dry-run is advisory. Revalidate every destructive action
-                // immediately before DELETE, including native identity/fingerprint,
-                // shared ownership and complete event usage coverage.
-                await this.inspectMapping(mapping, sharedSongIds, revalidatedCandidates, revalidationConflicts);
-            }
-            if (revalidationConflicts.length !== 0 || revalidatedCandidates.length !== 1) {
                 const failed = plan.conflicts.length + processed - completed;
                 await this.repository.save({
                     ...state,
@@ -150,6 +136,7 @@ export class HymnalUninstaller {
                     failed,
                     updatedAt: timestamp(),
                 });
+                await this.emitProgress(plan.candidates.length + plan.conflicts.length, completed, failed, 'running', options, candidate.hymnalSongId);
                 continue;
             }
             try {
@@ -164,6 +151,7 @@ export class HymnalUninstaller {
                     failed: plan.conflicts.length + processed - completed,
                     updatedAt: state.updatedAt,
                 });
+                await this.emitProgress(plan.candidates.length + plan.conflicts.length, completed, plan.conflicts.length + processed - completed, 'running', options, candidate.hymnalSongId);
             } catch {
                 // Keep the mapping when deletion fails; a later dry-run can retry safely.
                 const failed = plan.conflicts.length + processed - completed;
@@ -174,6 +162,7 @@ export class HymnalUninstaller {
                     failed,
                     updatedAt: timestamp(),
                 });
+                await this.emitProgress(plan.candidates.length + plan.conflicts.length, completed, failed, 'running', options, candidate.hymnalSongId);
             }
         }
         const failed = plan.candidates.length - completed + plan.conflicts.length;
@@ -188,44 +177,80 @@ export class HymnalUninstaller {
             failed,
             updatedAt: timestamp(),
         };
-        await this.repository.save({
-            ...state,
-            status,
-            completed,
-            failed,
-            updatedAt: result.updatedAt,
-        });
+        if (Object.keys(state.mappings).length === 0) {
+            await this.repository.delete(hymnalId);
+        } else {
+            await this.repository.save({
+                ...state,
+                status,
+                completed,
+                failed,
+                updatedAt: result.updatedAt,
+            });
+        }
+        await this.emitProgress(result.total, result.completed, result.failed, result.status, options);
         return result;
     }
 
-    private async inspectMapping(
-        mapping: HymnalSongMapping,
+    private async inspectMappings(
+        mappings: HymnalSongMapping[],
         sharedSongIds: Set<number>,
         candidates: UninstallCandidate[],
         conflicts: UninstallConflict[],
     ): Promise<void> {
-        if (sharedSongIds.has(mapping.churchToolsSongId)) {
-            conflicts.push({
-                hymnalSongId: mapping.hymnalSongId,
-                churchToolsSongId: mapping.churchToolsSongId,
-                reason: 'shared-mapping',
-                message: 'Der native Song ist noch einer weiteren importierten Ressource zugeordnet.',
-            });
-            return;
+        const inspectable: HymnalSongMapping[] = [];
+        for (const mapping of mappings) {
+            if (sharedSongIds.has(mapping.churchToolsSongId)) {
+                conflicts.push({
+                    hymnalSongId: mapping.hymnalSongId,
+                    churchToolsSongId: mapping.churchToolsSongId,
+                    reason: 'shared-mapping',
+                    message: 'Der native Song ist noch einer weiteren importierten Ressource zugeordnet.',
+                });
+            } else {
+                inspectable.push(mapping);
+            }
         }
-        let song: NativeSong;
-        try {
-            song = await this.songs.get(mapping.churchToolsSongId);
-        } catch (error) {
-            const normalized = toChurchToolsError(error);
-            conflicts.push({
-                hymnalSongId: mapping.hymnalSongId,
-                churchToolsSongId: mapping.churchToolsSongId,
-                reason: normalized.kind === 'not-found' ? 'missing' : 'lookup-failed',
-                message: normalized.message,
-            });
-            return;
+
+        const nativeSongs = new Map<number, NativeSong>();
+        const failedIds = new Map<number, string>();
+        for (let offset = 0; offset < inspectable.length; offset += 200) {
+            const batch = inspectable.slice(offset, offset + 200);
+            try {
+                const songs = await this.songs.list({
+                    ids: batch.map((mapping) => mapping.churchToolsSongId),
+                    include: ['arrangements'],
+                    limit: 200,
+                });
+                for (const song of songs) nativeSongs.set(song.id, song);
+            } catch (error) {
+                const message = toChurchToolsError(error).message;
+                for (const mapping of batch) failedIds.set(mapping.churchToolsSongId, message);
+            }
         }
+
+        for (const mapping of inspectable) {
+            const song = nativeSongs.get(mapping.churchToolsSongId);
+            const lookupFailure = failedIds.get(mapping.churchToolsSongId);
+            if (!song) {
+                conflicts.push({
+                    hymnalSongId: mapping.hymnalSongId,
+                    churchToolsSongId: mapping.churchToolsSongId,
+                    reason: lookupFailure ? 'lookup-failed' : 'missing',
+                    message: lookupFailure ?? 'Der gemappte native Song wurde nicht gefunden.',
+                });
+                continue;
+            }
+            await this.inspectLoadedMapping(mapping, song, candidates, conflicts);
+        }
+    }
+
+    private async inspectLoadedMapping(
+        mapping: HymnalSongMapping,
+        song: NativeSong,
+        candidates: UninstallCandidate[],
+        conflicts: UninstallConflict[],
+    ): Promise<void> {
         if (nativeSongFingerprint(song) !== mapping.importedFingerprint) {
             conflicts.push({
                 hymnalSongId: mapping.hymnalSongId,
@@ -277,5 +302,23 @@ export class HymnalUninstaller {
             return;
         }
         candidates.push({ hymnalSongId: mapping.hymnalSongId, churchToolsSongId: mapping.churchToolsSongId });
+    }
+
+    private async emitProgress(
+        total: number,
+        completed: number,
+        failed: number,
+        status: OperationStatus,
+        options: { onProgress?: (progress: UninstallProgress) => void | Promise<void> },
+        hymnalSongId?: string,
+    ): Promise<void> {
+        await options.onProgress?.({
+            status,
+            total,
+            completed,
+            failed,
+            percent: total === 0 ? 100 : Math.round(((completed + failed) / total) * 100),
+            hymnalSongId,
+        });
     }
 }

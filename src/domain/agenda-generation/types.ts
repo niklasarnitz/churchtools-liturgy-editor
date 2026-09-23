@@ -6,9 +6,20 @@ export interface SongSlotValue {
     songId: number;
     arrangementId: number | null;
     title?: string;
+    sourceName?: string;
+    number?: string;
+    /** Event-specific information such as verses, repetitions, or melody. */
+    comment?: string;
 }
 
-export type AgendaSlotValue = SongSlotValue | ScriptureReference | string;
+export interface SermonSlotValue {
+    kind: 'sermon';
+    title?: string;
+    /** Scripture reference or other text displayed below the sermon title. */
+    text: string;
+}
+
+export type AgendaSlotValue = SongSlotValue | SermonSlotValue | ScriptureReference | string;
 
 export interface NormalizedAgendaItem {
     nodeId: string;
@@ -16,6 +27,7 @@ export interface NormalizedAgendaItem {
     type: 'header' | 'text' | 'song';
     title: string;
     note?: string;
+    responsible?: string;
     songId?: number;
     arrangementId?: number | null;
 }

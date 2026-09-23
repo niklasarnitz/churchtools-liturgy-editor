@@ -6,9 +6,12 @@ import type { AgendaDriftReason } from '../domain/reconciliation/fingerprint';
 
 export type WorkspaceStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export type WorkspaceEvent = NativeEvent & { id: number; name: string; startDate: string; status: ServiceStatus };
+export type WorkspaceEventStatus = ServiceStatus | 'loading';
 
-export const serviceStatusLabels: Record<ServiceStatus, string> = {
+export type WorkspaceEvent = NativeEvent & { id: number; name: string; startDate: string; status: WorkspaceEventStatus };
+
+export const serviceStatusLabels: Record<WorkspaceEventStatus, string> = {
+    loading: 'Ablauf wird geprüft …',
     'no-agenda': 'Noch kein Ablauf',
     managed: 'Liturgie vorbereitet',
     complete: 'Vollständig',
@@ -17,6 +20,8 @@ export const serviceStatusLabels: Record<ServiceStatus, string> = {
 };
 
 export type ImportProgressView = {
+    operation: 'install' | 'uninstall';
+    hymnalId: string;
     completed: number;
     failed: number;
     total: number;

@@ -9,8 +9,8 @@ export const organizations = [
         shortName: 'EKiBa',
         language: 'de',
         hymnalIds: ['eg-baden'],
-        liturgyIds: ['baden-predigtgottesdienst-demo'],
-        lectionaryIds: ['demo-minimal'],
+        liturgyIds: ['baden-durmersheim'],
+        lectionaryIds: [],
     },
     {
         id: 'elkb',
@@ -36,8 +36,8 @@ export const organizations = [
         shortName: 'SELK',
         language: 'de',
         hymnalIds: ['elkg2'],
-        liturgyIds: ['selk-hauptgottesdienst-demo'],
-        lectionaryIds: ['demo-minimal'],
+        liturgyIds: [],
+        lectionaryIds: [],
     },
     {
         id: 'lcms',

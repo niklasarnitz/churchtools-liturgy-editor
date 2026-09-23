@@ -8,6 +8,7 @@ import type { JsonStateStore } from '../churchtools/customModuleStore';
 import type { ResourceRegistry } from '../data/registry';
 import type { LiturgicalDay, ScriptureReference } from '../data/lectionaries';
 import type { OrganizationDefinition } from '../data/organizations';
+import type { LiturgyNode } from '../data/liturgies';
 import type { AgendaSlotValue } from '../domain/agenda-generation';
 import type { HymnalImportState, HymnalImportStateRepository, HymnalImportOptions } from '../domain/imports';
 import type { HymnalUninstallPlan, HymnalUninstallState } from '../domain/imports/uninstaller';
@@ -20,7 +21,7 @@ export type BootstrapState = { status: 'loading' | 'ready' | 'error'; resources:
 
 export type ExternalLectionarySource = { fetchDay(input: { date: string; organizationId: string; lectionaryId?: string }): Promise<LiturgicalDay | undefined> };
 export type LectionarySourceOptions = { url?: string; client?: ChurchToolsRequestClient; source?: ExternalLectionarySource };
-export type LiturgicalSuggestion = { day?: LiturgicalDay; source: 'local' | 'external' | 'none'; overrides: Partial<LiturgicalDay> };
+export type LiturgicalSuggestion = { day?: LiturgicalDay; source: 'external' | 'none'; overrides: Partial<LiturgicalDay> };
 export type InstallationSettings = {
     version: 1;
     organizationId?: string;
@@ -33,6 +34,8 @@ export type SaveAgendaInput = {
     eventId: number;
     organizationId: string;
     liturgyId: string;
+    /** User-arranged nodes from the visual editor. Template identity and metadata remain registry-owned. */
+    nodes?: LiturgyNode[];
     slots?: EditorValues;
     optionalSections?: Readonly<Record<string, boolean>>;
     liturgicalDay?: LiturgicalDay;

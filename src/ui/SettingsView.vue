@@ -19,7 +19,7 @@ const props = defineProps<{
     apiConfigured?: boolean;
     availableLiturgiesCount?: number;
     availableLectionariesCount?: number;
-    uninstallReport?: { safeCount: number; conflictCount: number };
+    uninstallReport?: { removedCount: number; retainedCount: number };
 }>();
 
 const emit = defineEmits<{
@@ -159,6 +159,7 @@ const chooseOrganization = (orgId: string) => {
             <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div class="max-w-md flex-1">
                     <SelectDropdown
+                        id="organization-quick-select"
                         :model-value="props.selectedOrganizationId ?? ''"
                         label="Kirchenkörper (Schnellauswahl / Zurücksetzen)"
                         :options="organizationDropdownOptions"
@@ -207,9 +208,9 @@ const chooseOrganization = (orgId: string) => {
             >
                 <Icon icon="fas fa-shield-check" size="S" />
                 <span>
-                    Deinstallation erfolgreich geprüft: {{ uninstallReport.safeCount }} Songs sicher entfernt
-                    <span v-if="uninstallReport.conflictCount">
-                        ({{ uninstallReport.conflictCount }} Songs mit Anpassungen/Verwendungen geschützt)
+                    Deinstallation abgeschlossen: {{ uninstallReport.removedCount }} Songs sicher entfernt
+                    <span v-if="uninstallReport.retainedCount">
+                        ({{ uninstallReport.retainedCount }} Songs mit Anpassungen, Verwendungen oder fehlgeschlagenen Löschungen erhalten)
                     </span>.
                 </span>
             </div>
@@ -257,7 +258,7 @@ const chooseOrganization = (orgId: string) => {
                 <div class="divide-y divide-slate-100">
                     <div class="flex justify-between gap-4 py-3 text-sm">
                         <span class="text-slate-500">Status</span>
-                        <strong>{{ props.isOnline ? 'Verbunden' : props.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Vorschau ohne Verbindung' }}</strong>
+                        <strong>{{ props.isOnline ? 'Verbunden' : props.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Nicht konfiguriert' }}</strong>
                     </div>
                     <div class="flex justify-between gap-4 py-3 text-sm">
                         <span class="text-slate-500">Native APIs</span>
@@ -265,7 +266,7 @@ const chooseOrganization = (orgId: string) => {
                     </div>
                     <div class="flex justify-between gap-4 py-3 text-sm">
                         <span class="text-slate-500">Speicher</span>
-                        <span>Custom Module State mit lokalem Fallback</span>
+                        <span>ChurchTools Custom Module State</span>
                     </div>
                 </div>
             </Card>

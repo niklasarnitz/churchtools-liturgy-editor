@@ -1,8 +1,17 @@
+import type { GetPermissionsGlobalResponse } from '@churchtools/api-types';
 import type { ChurchToolsRequestClient } from './request';
 import type { NativeGlobalPermissions } from './types';
 import { ChurchToolsError } from './errors';
 
 export type PermissionValue = boolean | number[] | undefined;
+
+function isPermissionRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNumberArray(value: unknown): value is number[] {
+    return Array.isArray(value) && value.every((entry) => typeof entry === 'number');
+}
 
 export class ChurchToolsPermissionsAdapter {
     private readonly client: ChurchToolsRequestClient;
@@ -16,7 +25,7 @@ export class ChurchToolsPermissionsAdapter {
     getGlobal(): Promise<NativeGlobalPermissions> {
         if (this.globalPermissions) return Promise.resolve(this.globalPermissions);
         if (this.globalPermissionsRequest) return this.globalPermissionsRequest;
-        this.globalPermissionsRequest = this.client.get<NativeGlobalPermissions>('/permissions/global')
+        this.globalPermissionsRequest = this.client.get<GetPermissionsGlobalResponse['data']>('/permissions/global')
             .then((permissions) => {
                 this.globalPermissions = permissions;
                 return permissions;
@@ -35,10 +44,10 @@ export class ChurchToolsPermissionsAdapter {
     async can(moduleName: string, permission: string, dataId?: number): Promise<boolean> {
         const permissions = await this.getGlobal();
         const modulePermissions = permissions[moduleName];
-        if (!modulePermissions) return false;
-        const value = modulePermissions[permission] as PermissionValue;
+        if (!isPermissionRecord(modulePermissions)) return false;
+        const value = modulePermissions[permission];
         if (value === true) return true;
-        if (!Array.isArray(value)) return false;
+        if (!isNumberArray(value)) return false;
         return dataId !== undefined ? value.includes(dataId) : value.length > 0;
     }
 

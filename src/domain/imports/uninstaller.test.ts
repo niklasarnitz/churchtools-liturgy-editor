@@ -54,10 +54,16 @@ class MemoryState implements HymnalImportStateRepository {
     async save(state: HymnalImportState): Promise<void> {
         this.value = structuredClone(state);
     }
+
+    async delete(): Promise<void> {
+        this.value = undefined as unknown as HymnalImportState;
+    }
 }
 
 class FakeSongs implements HymnalSongPort {
     deleteCount = 0;
+    listCount = 0;
+    getCount = 0;
     private current: NativeSong | undefined = nativeSong;
 
     async listCategories(): Promise<NativeSongCategory[]> {
@@ -69,8 +75,16 @@ class FakeSongs implements HymnalSongPort {
     }
 
     async get(songId: number): Promise<NativeSong> {
+        this.getCount += 1;
         if (!this.current || this.current.id !== songId) throw new Error('missing');
         return structuredClone(this.current);
+    }
+
+    async list(input: { ids?: number[] }): Promise<NativeSong[]> {
+        this.listCount += 1;
+        return this.current && (!input.ids || input.ids.includes(this.current.id))
+            ? [structuredClone(this.current)]
+            : [];
     }
 
     async create(): Promise<NativeSong> {
@@ -159,22 +173,42 @@ describe('HymnalUninstaller', () => {
 
         await expect(checker.isSongUsed(nativeSong.id)).resolves.toBe(true);
         expect(checked).toEqual([1, 2, 3]);
+        await expect(checker.isSongUsed(999)).resolves.toBe(false);
+        expect(checked).toEqual([1, 2, 3]);
         await expect(checker.getCoverage()).resolves.toMatchObject({ complete: true });
     });
 
-    it('revalidates usage immediately before DELETE', async () => {
+    it('loads mapped songs through the batch list endpoint', async () => {
+        const songs = new FakeSongs();
+        const state = new MemoryState();
+        const usage: HymnalUsageChecker = {
+            async getCoverage() { return { complete: true }; },
+            async isSongUsed() { return false; },
+        };
+
+        const plan = await new HymnalUninstaller(songs, state, usage).dryRun('demo');
+
+        expect(plan.safeCount).toBe(1);
+        expect(songs.listCount).toBe(1);
+        expect(songs.getCount).toBe(0);
+    });
+
+    it('uses one validated usage snapshot and reports delete progress', async () => {
         const songs = new FakeSongs();
         const state = new MemoryState();
         const usage = new ToggleUsage();
+        const percentages: number[] = [];
         const result = await new HymnalUninstaller(songs, state, usage).uninstall('demo', {
             now: () => '2026-09-22T00:00:01.000Z',
+            onProgress: (progress) => { percentages.push(progress.percent); },
         });
 
-        expect(usage.calls).toBe(2);
-        expect(songs.deleteCount).toBe(0);
-        expect(result.status).toBe('failed');
-        expect(result.completed).toBe(0);
-        expect(result.failed).toBe(1);
-        expect(state.value.mappings['demo:1']).toBeDefined();
+        expect(usage.calls).toBe(1);
+        expect(songs.deleteCount).toBe(1);
+        expect(result.status).toBe('completed');
+        expect(result.completed).toBe(1);
+        expect(result.failed).toBe(0);
+        expect(state.value).toBeUndefined();
+        expect(percentages).toEqual([0, 100, 100]);
     });
 });

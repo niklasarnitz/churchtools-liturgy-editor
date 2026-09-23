@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Card, DialogSmall, EmptyState, Icon, LoadingMessage, SelectDropdown } from './ui/styleguide';
+import { Button, Card, DialogSmall, EmptyState, Icon, LoadingMessage, ProgressBar, SelectDropdown } from './ui/styleguide';
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import type { HymnalDefinition } from './data/hymnals';
@@ -15,6 +15,7 @@ import { formatScriptureReference } from './domain/lectionary';
 import { resourceRegistry } from './data/registry';
 import type { HymnalImportState } from './domain/imports';
 import type { AgendaDriftReason } from './domain/reconciliation/fingerprint';
+import { workspaceQueryClient } from './ui/query';
 
 type Section = 'services' | 'liturgies' | 'hymnals' | 'settings';
 type Notice = { id: number; message: string; type: 'info' | 'success' | 'warning' | 'error' };
@@ -29,7 +30,7 @@ const drift = ref<AgendaDriftView>();
 const notices = ref<Notice[]>([]);
 const noticeSequence = ref(0);
 const importStates = reactive<Record<string, HymnalImportState | undefined>>({});
-const uninstallReport = ref<{ safeCount: number; conflictCount: number }>();
+const uninstallReport = ref<{ removedCount: number; retainedCount: number }>();
 const driftDetailsVisible = ref(false);
 const driftBusy = ref(false);
 
@@ -42,7 +43,7 @@ const addNotice = (message: string, type: Notice['type'] = 'info') => {
     }, 6500);
 };
 
-const workspace = useWorkspace({ baseUrl: props.baseUrl, notify: addNotice });
+const workspace = useWorkspace({ baseUrl: props.baseUrl, notify: addNotice, queryClient: workspaceQueryClient });
 
 const sectionItems = computed(() => props.extensionPoint === 'admin'
     ? [
@@ -80,6 +81,10 @@ const onOrganizationChange = async (value: string | number) => {
 const openService = (event: WorkspaceEvent, liturgy?: LiturgyDefinition) => {
     if (!workspace.installationSettings.organizationId) {
         addNotice('Bitte zuerst in den Extension-Einstellungen einen Kirchenkörper festlegen.', 'warning');
+        return;
+    }
+    if (!liturgy && workspace.availableLiturgies.length === 0) {
+        addNotice('Für diesen Kirchenkörper ist keine Liturgievorlage verfügbar.', 'warning');
         return;
     }
     selectedEvent.value = event;
@@ -145,11 +150,14 @@ const executePendingUninstall = async () => {
     const { hymnal } = pendingUninstall.value;
     uninstallExecuting.value = true;
     try {
-        const plan = await workspace.uninstallHymnal(hymnal.id);
-        uninstallReport.value = { safeCount: plan.safeCount, conflictCount: plan.conflictCount };
+        const result = await workspace.uninstallHymnal(hymnal.id);
+        uninstallReport.value = {
+            removedCount: result.state?.completed ?? 0,
+            retainedCount: result.state?.failed ?? result.plan.conflictCount,
+        };
         importStates[hymnal.id] = await workspace.loadImport(hymnal.id);
         pendingUninstall.value = undefined;
-        if (plan.conflictCount) addNotice(`${plan.conflictCount} Songs wurden wegen Konflikten nicht entfernt.`, 'warning');
+        if (uninstallReport.value.retainedCount) addNotice(`${uninstallReport.value.retainedCount} Songs wurden wegen Konflikten oder fehlgeschlagenen Löschungen nicht entfernt.`, 'warning');
     } catch {
         // The workspace exposes a translated error and notification.
     } finally {
@@ -218,7 +226,7 @@ onMounted(() => { void load().catch(() => undefined); });
                 <nav class="flex flex-wrap gap-2 lg:flex-col">
                     <button v-for="item in sectionItems" :key="item.key" type="button" :class="['flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors', activeSection === item.key ? 'bg-accent-b-pale text-accent-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900']" @click="activeSection = item.key; selectedEvent = undefined"><Icon :icon="item.icon" size="S" /><span>{{ item.label }}</span></button>
                 </nav>
-                <div class="mt-auto hidden space-y-2 pt-8 text-xs text-slate-500 lg:block"><span class="flex items-center gap-2"><span class="size-2 rounded-full" :class="workspace.isOnline ? 'bg-emerald-500' : workspace.apiConfigured ? 'bg-red-500' : 'bg-amber-500'"></span>{{ workspace.isOnline ? 'Mit ChurchTools verbunden' : workspace.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Vorschau ohne Verbindung' }}</span><span class="block">Liturgie-Editor v0.1</span></div>
+                <div class="mt-auto hidden space-y-2 pt-8 text-xs text-slate-500 lg:block"><span class="flex items-center gap-2"><span class="size-2 rounded-full" :class="workspace.isOnline ? 'bg-emerald-500' : workspace.apiConfigured ? 'bg-red-500' : 'bg-amber-500'"></span>{{ workspace.isOnline ? 'Mit ChurchTools verbunden' : workspace.apiConfigured ? 'Verbindung fehlgeschlagen' : 'ChurchTools nicht konfiguriert' }}</span><span class="block">Liturgie-Editor v0.1</span></div>
             </aside>
 
             <main class="min-w-0 flex-1 p-5 lg:p-9">
@@ -246,15 +254,22 @@ onMounted(() => { void load().catch(() => undefined); });
 
                 <template v-else>
                     <section v-if="activeSection === 'services'" class="space-y-6">
-                        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Sonntage und Feiertage</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Anstehende Gottesdienste</h2><p class="mt-2 text-sm text-slate-500">Wähle einen Gottesdienst aus, um eine Liturgie vorzubereiten.</p></div><Button label="Aktualisieren" icon="fas fa-rotate-right" :outlined="true" :loading="workspace.eventStatus === 'loading'" @click="workspace.loadEvents" /></div>
+                        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Sonntage und Feiertage</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Anstehende Gottesdienste</h2><p class="mt-2 text-sm text-slate-500">Wähle einen Gottesdienst aus, um eine Liturgie vorzubereiten.</p></div><Button label="Aktualisieren" icon="fas fa-rotate-right" :outlined="true" :loading="workspace.eventStatus === 'loading'" @click="workspace.loadEvents()" /></div>
                         <div v-if="workspace.eventStatus === 'loading'"><LoadingMessage message="Gottesdienste werden geladen …" /></div>
-                        <div v-else-if="workspace.events.length === 0"><EmptyState title="Keine kommenden Gottesdienste gefunden" icon="fas fa-calendar-days"><Button label="Gottesdienstliste aktualisieren" icon="fas fa-rotate-right" :outlined="true" @click="workspace.loadEvents" /></EmptyState></div>
+                        <div v-else-if="workspace.events.length === 0"><EmptyState title="Keine kommenden Gottesdienste gefunden" icon="fas fa-calendar-days"><Button label="Gottesdienstliste aktualisieren" icon="fas fa-rotate-right" :outlined="true" @click="workspace.loadEvents()" /></EmptyState></div>
                         <div v-else class="grid gap-4">
-                            <Card v-for="event in workspace.events" :key="event.id" class="!p-0">
-                                <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center"><div class="flex shrink-0 flex-col border-b border-slate-200 pb-4 sm:w-24 sm:border-b-0 sm:border-r sm:pb-0"><strong class="text-lg font-bold">{{ formatDate(event.startDate).split(' ')[0] }}</strong><span class="text-sm text-slate-500">{{ formatDate(event.startDate).replace(`${formatDate(event.startDate).split(' ')[0]} `, '') }}</span></div>
-                                <div class="min-w-0 flex-1"><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">{{ event.calendar?.title ?? 'Gottesdienst' }}</div><h3 class="mt-1 text-lg font-semibold">{{ event.name }}</h3><p class="mt-1 text-sm text-slate-500">{{ new Date(event.startDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }} Uhr · {{ event.isCanceled ? 'Abgesagt' : 'Geplant' }}</p></div>
-                                <div class="flex items-center justify-between gap-3 sm:flex-col sm:items-end"><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ eventStatus(event) }}</span><Button :label="selectedEvent?.id === event.id ? 'Bearbeiten' : 'Liturgie erstellen'" icon="fas fa-arrow-right" size="S" @click="openService(event)" /></div></div>
+                            <Card v-for="event in workspace.events" :key="event.id">
+                                <template #full>
+                                    <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center"><div class="flex shrink-0 flex-col border-b border-slate-200 pb-4 sm:w-24 sm:border-b-0 sm:border-r sm:pb-0"><strong class="text-lg font-bold">{{ formatDate(event.startDate).split(' ')[0] }}</strong><span class="text-sm text-slate-500">{{ formatDate(event.startDate).replace(`${formatDate(event.startDate).split(' ')[0]} `, '') }}</span></div>
+                                    <div class="min-w-0 flex-1"><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">{{ event.calendar?.title ?? 'Gottesdienst' }}</div><h3 class="mt-1 text-lg font-semibold">{{ event.name }}</h3><p class="mt-1 text-sm text-slate-500">{{ new Date(event.startDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }} Uhr · {{ event.isCanceled ? 'Abgesagt' : 'Geplant' }}</p></div>
+                                    <div class="flex flex-col items-stretch gap-3 sm:items-end"><span class="flex items-center gap-1.5 self-start rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"><Icon v-if="event.status === 'loading'" icon="fas fa-spinner fa-spin" size="S" />{{ eventStatus(event) }}</span><Button :label="selectedEvent?.id === event.id ? 'Bearbeiten' : 'Liturgie erstellen'" icon="fas fa-arrow-right" size="S" @click="openService(event)" /></div></div>
+                                </template>
                             </Card>
+                            <nav class="flex items-center justify-center gap-3 pt-2" aria-label="Seitennavigation für Gottesdienste">
+                                <Button label="Zurück" icon="fas fa-arrow-left" size="S" :outlined="true" :disabled="workspace.eventPage === 1 || workspace.eventStatus === 'loading'" @click="workspace.loadPreviousEvents" />
+                                <span class="min-w-20 text-center text-sm font-medium text-slate-600">Seite {{ workspace.eventPage }}</span>
+                                <Button label="Weiter" icon-after="fas fa-arrow-right" size="S" :outlined="true" :disabled="!workspace.eventHasNextPage || workspace.eventStatus === 'loading'" @click="workspace.loadNextEvents" />
+                            </nav>
                         </div>
                     </section>
 
@@ -279,7 +294,7 @@ onMounted(() => { void load().catch(() => undefined); });
                             <h2 class="mt-2 text-2xl font-bold tracking-tight">Gesangbücher</h2>
                             <p class="mt-2 text-sm text-slate-500">Installierte Lieder bleiben native ChurchTools-Songs und sind in allen normalen ChurchTools-Oberflächen verfügbar.</p>
                         </div>
-                        <div v-if="uninstallReport" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Icon icon="fas fa-shield-check" size="S" /> Deinstallation geprüft: {{ uninstallReport.safeCount }} sicher entfernt<span v-if="uninstallReport.conflictCount">, {{ uninstallReport.conflictCount }} Konflikte offengehalten</span>.</div>
+                        <div v-if="uninstallReport" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Icon icon="fas fa-shield-check" size="S" /> Deinstallation abgeschlossen: {{ uninstallReport.removedCount }} sicher entfernt<span v-if="uninstallReport.retainedCount">, {{ uninstallReport.retainedCount }} erhalten</span>.</div>
                         <div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
                             <p>Kein Kirchenkörper festgelegt. Bitte wähle in den Einstellungen einen Kirchenkörper aus, um die zugehörigen Gesangbücher zu laden.</p>
                             <div class="mt-3">
@@ -361,6 +376,21 @@ onMounted(() => { void load().catch(() => undefined); });
                 <p v-else class="text-xs text-slate-500">
                     Es gibt keine sicher entfernbaren Songs. Die vorhandenen Songs bleiben erhalten.
                 </p>
+                <div v-if="uninstallExecuting && workspace.importProgress?.hymnalId === pendingUninstall.hymnal.id" class="rounded-lg border border-sky-200 bg-sky-50 p-3" aria-live="polite">
+                    <div class="mb-2 flex justify-between gap-3 text-xs font-semibold text-sky-900">
+                        <span>Songs werden gelöscht …</span>
+                        <span v-if="workspace.importProgress.total > 0">
+                            {{ workspace.importProgress.completed + workspace.importProgress.failed }} / {{ workspace.importProgress.total }} · {{ workspace.importProgress.percent }} %
+                        </span>
+                        <span v-else>Wird vorbereitet …</span>
+                    </div>
+                    <ProgressBar
+                        v-if="workspace.importProgress.total > 0"
+                        :planned="workspace.importProgress.total"
+                        :used="workspace.importProgress.completed + workspace.importProgress.failed"
+                    />
+                    <div v-else class="h-2 overflow-hidden rounded-full bg-sky-100"><div class="h-full w-1/3 animate-pulse rounded-full bg-sky-500"></div></div>
+                </div>
             </div>
             <template #footer-right>
                 <Button label="Abbrechen" :outlined="true" :disabled="uninstallExecuting" @click="pendingUninstall = undefined" />

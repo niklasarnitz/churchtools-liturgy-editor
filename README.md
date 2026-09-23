@@ -7,8 +7,8 @@ nur für Ressourcen-Metadaten, Import-Mappings, Vorlagenversionen, Managed-State
 und Benutzereinstellungen verwendet.
 
 Der aktuelle Stand ist eine gemountete Vue-Main-/Admin-Oberfläche auf einem
-buildbaren Domain-/Adapter-MVP mit Demo-Ressourcen. Die Live-Instanzprüfung und
-der interaktive ChurchTools-Host-Smoke-Test bleiben separate Abnahmeschritte.
+buildbaren Domain-/Adapter-MVP. Die Live-Instanzprüfung und der interaktive
+ChurchTools-Host-Smoke-Test bleiben separate Abnahmeschritte.
 
 ## Lokale Entwicklung
 
@@ -62,11 +62,11 @@ sollen.
 ```text
 src/
   churchtools/       REST-/Legacy-Adapter, Permissions, KV-State, Retry/Fehler
-  data/              versionierte statische Organisationen und Ressourcen
+  data/              versionierte Organisationen und Gesangbücher
   domain/
     agenda-generation/  Template-DSL -> normalisierte Agenda
     imports/            idempotenter Hymnal-Import und sichere Deinstallation
-    lectionary/         Resolver für installierte Lektionare + Overrides
+    lectionary/         Kirchenjahr-Datentypen und Override-Logik
     managed-agendas/    Managed-State und konservative Synchronisation
     reconciliation/     native Agenda-Fingerprint und Drift-Erkennung
   main.ts             offizieller Boilerplate-Einstiegspunkt
@@ -103,18 +103,15 @@ Alle mitgelieferten Daten liegen versioniert unter `src/data/`:
   - `eg-baden`: Evangelisches Gesangbuch – Baden (786 Lieder) für die Evangelische Kirche Baden (`ekiba`)
   - `elkg2`: Evangelisch-Lutherisches Kirchengesangbuch² (864 Lieder) für die SELK (`selk`)
   - `lutheran-service-book`: Lutheran Service Book (636 Lieder) für die LCMS (`lcms`)
-- `liturgies/`: versionierte deklarative DSL mit stabilen Node-IDs. Unterstützt
+- `liturgies/`: deklarative DSL mit stabilen Node-IDs. Unterstützt
   `heading`, `fixedText`, `rubric`, `songSlot`, `readingSlot`, `sermonSlot`,
   `creed`, `prayer`, `optionalSection`, `freeTextSlot` und
-  `communionSection`.
-- `lectionaries/`: versionierte Tagesdaten mit Scripture-Referenzen. Das
-  minimale Lektionar ist ausdrücklich ein Fixture, keine vollständige
-  kirchliche Datenbank.
+  `communionSection`. Mitgeliefert wird die „Badische Liturgie (Durmersheim)“
+  mit den exklusiven Formen Taufe und Abendmahl sowie einem druckoptimierten
+  A4-Querformat-Export im Durmersheimer Ablaufzettel-Stil.
+- `lectionaries/`: Datentypen für Kirchenjahr-Vorschläge. Die Runtime enthält
+  keine lokalen Tagesdaten; Vorschläge werden aus der Lektionar-API geladen.
 - `registry.ts`: gemeinsame Registry für Validierung und Domain-Tests.
-
-Die Demo-Vorlagen und -Daten sind `baden-predigtgottesdienst-demo`,
-`selk-hauptgottesdienst-demo` und `demo-minimal`. Sie dürfen nicht als offizielle
-kirchliche Inhalte beworben werden.
 
 ### Neue Organisation hinzufügen
 
@@ -148,30 +145,18 @@ kirchliche Inhalte beworben werden.
 4. Organisation und optionales Lektionar referenzieren und den Renderer-Test
    um den neuen Workflow erweitern.
 
-### Neues Lektionar hinzufügen
-
-1. Eine versionierte Definition unter `src/data/lectionaries/` anlegen und in
-   `lectionaries/index.ts` registrieren.
-2. Pro Tag stabile ID, ISO-Datum und nur belastbare Referenzen angeben.
-3. Organisationen referenzieren. Ein fehlender Tag ist ein fehlender Vorschlag,
-   kein Grund für erfundene Fallback-Daten.
-4. `src/domain/lectionary/resolver.ts` testen: explizite Auswahl gewinnt vor
-   Liturgie-/Organisationsstandard; manuelle Overrides gewinnen zuletzt.
-
-Die separate Kirchenjahr-Quelle `lectionar` stellt zusätzlich
+Die separate Kirchenjahr-Quelle `lectionar` stellt
 `GET /api/church-year?date=YYYY-MM-DD&organizationId=<id>&lectionaryId=<profile>`
-bereit. Die Extension behandelt dessen Werte als Vorschläge. Die vorhandene
+bereit. Die Extension behandelt deren Werte als Vorschläge und verwendet keine
+lokalen Ersatzdaten. Die vorhandene
 `/api/reading`-Route bleibt eine tägliche Reading-/ICS-API und ist kein Ersatz
-für die installierten Liturgie-Ressourcen. Das Kirchenjahresprofil `ekd` liefert
+für die Kirchenjahr-API. Das Kirchenjahresprofil `ekd` liefert
 AT-Lesung, Epistel, Evangelium und Predigttext aus den Kalender-ICS-Dateien;
 `lutherisch` ist dafür kein gültiger Profilwert mehr.
 
-Die Application unterstützt dafür einen optionalen `deps.lectionary`-Port
-(`source` oder `url` + Client) in `LiturgyEditorApplication`. Aktuell wird
-dieser Port in `src/ui/useWorkspace.ts` noch nicht aus
-`VITE_LECTIONAR_API_URL` verdrahtet; die UI nutzt deshalb nur lokale Demo-
-Lektionare. Das ist ein konkreter Integrations-Restpunkt, kein stiller
-Fallback auf eine fremde Datenquelle.
+`src/ui/useWorkspace.ts` verdrahtet `VITE_LECTIONAR_API_URL` mit dem
+`FetchLectionarySource`. Der Adapter ruft `/api/church-year` direkt per HTTP
+auf; ohne konfigurierte URL wird kein Kirchenjahr-Vorschlag erzeugt.
 
 ## ChurchTools-Anbindung
 
@@ -217,7 +202,7 @@ Fortschritt, Fehler, Resource-Version, Fingerprints und die exakte Zuordnung
 `hymnalSongId -> churchToolsSongId` (plus Arrangement-ID).
 
 Ein erneuter Lauf lädt diesen State und setzt nur fehlende/geänderte Einträge
-fort. UI-Fortschritt ist `completed / total`; Teilfehler bleiben sichtbar und
+fort. UI-Fortschritt ist `(completed + failed) / total`; Teilfehler bleiben sichtbar und
 können erneut versucht werden.
 
 ### Sichere Deinstallation

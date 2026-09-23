@@ -22,6 +22,7 @@ import { silentImportLogger } from './types';
 export interface HymnalSongPort {
     listCategories(): Promise<NativeSongCategory[]>;
     createCategory(input: { name: string; sortKey?: number }): Promise<NativeSongCategory>;
+    list(input: { ids?: number[]; include?: Array<'arrangements' | 'tags'>; limit?: number; page?: number }): Promise<NativeSong[]>;
     get(songId: number): Promise<NativeSong>;
     create(input: NativeSongCreate): Promise<NativeSong>;
     update(songId: number, input: NativeSongCreate): Promise<NativeSong>;
@@ -164,6 +165,7 @@ export class HymnalImporter {
                         copyright: song.copyright ?? null,
                         ccli: song.ccli ?? null,
                         shouldPractice: false,
+                        arrangements: [{ name: 'Standard', isDefault: true }],
                     });
                 } catch (error) {
                     const normalized = toChurchToolsError(error, `create song ${song.id}`);
@@ -199,9 +201,11 @@ export class HymnalImporter {
                 );
             }
             const createdAt = now();
+            const arrangement = await this.ensureDefaultArrangement(native);
             state.mappings[song.id] = {
                 hymnalSongId: song.id,
                 churchToolsSongId: native.id,
+                churchToolsArrangementId: arrangement?.id,
                 sourceFingerprint,
                 importedFingerprint: fingerprint,
                 hymnalVersion: hymnal.version,
@@ -209,15 +213,9 @@ export class HymnalImporter {
                 updatedAt: createdAt,
             };
             delete state.pendingCreates?.[song.id];
-            // Persist immediately after the native Song create. Arrangement
-            // creation is a second request and must never cause a duplicate
-            // Song on resume.
-            await this.repository.save(state);
-            const arrangement = await this.ensureDefaultArrangement(native);
             const timestamp = now();
             state.mappings[song.id] = {
                 ...state.mappings[song.id],
-                churchToolsArrangementId: arrangement?.id,
                 updatedAt: timestamp,
             };
             state.failures = state.failures.filter((failure) => failure.hymnalSongId !== song.id);
@@ -266,7 +264,7 @@ export class HymnalImporter {
             completed: state.completed,
             failed: state.failed,
             total: state.total,
-            percent: state.total === 0 ? 100 : Math.round((state.completed / state.total) * 100),
+            percent: state.total === 0 ? 100 : Math.round(((state.completed + state.failed) / state.total) * 100),
             hymnalSongId,
         };
         await options.onProgress?.(progress);

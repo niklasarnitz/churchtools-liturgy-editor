@@ -1,107 +1,68 @@
-import type { Arrangement, Event, GlobalPermissions, Song, SongCategory } from '../utils/ct-types';
+import type {
+    GetEventsIdAgendaResponse,
+    GetEventsIdResponse,
+    GetPermissionsGlobalResponse,
+    GetSongCategoriesResponse,
+    GetSongsSongIdResponse,
+    PostEventsIdAgendaItemsData,
+    PostEventsIdAgendaItemsResponse,
+    PostSongsData,
+    PostSongsSongIdArrangementsData,
+    PostSongsSongIdArrangementsResponse,
+    PutEventsIdAgendaData,
+} from '@churchtools/api-types';
 
 /** The subset of an event used by the liturgy editor. */
-export type NativeEvent = Event & { id: number; calendar?: { id?: number } };
+type ApiEvent = GetEventsIdResponse['data'];
+export type NativeEvent = Omit<Partial<ApiEvent>, 'id' | 'calendar'> & Pick<ApiEvent, 'id' | 'calendar'>;
 
 /**
- * The generated type file in the boilerplate predates the current OpenAPI
- * discriminator for agenda items. Keep the adapter's wire types explicit so
- * `arrangementId` is never confused with a song id.
+ * Compatibility fields keep the existing domain adapter contract while the
+ * underlying item shape comes from the generated REST response.
  */
-export type NativeAgendaItemInput =
-    | {
-          type: 'header';
-          title: string | null;
-          duration?: number;
-      }
-    | {
-          type: 'text';
-          title: string | null;
-          duration?: number;
-          note?: string | null;
-          responsible?: string | null;
-      }
-    | {
-          type: 'song';
-          title: string | null;
-          duration?: number;
-          note?: string | null;
-          responsible?: string | null;
-          arrangementId: number;
-      };
+type ApiAgendaItem = PostEventsIdAgendaItemsResponse['data'];
+type ApiAgendaContentItem = Extract<ApiAgendaItem, { type: 'text' | 'song' }>;
+type ApiAgendaSongItem = Extract<ApiAgendaItem, { type: 'song' }>;
+type ApiAgendaSong = NonNullable<ApiAgendaSongItem['song']>;
 
 export type NativeAgendaItem = {
-    id: number;
-    type: 'header' | 'text' | 'song';
-    title: string | null;
-    duration?: number;
-    note?: string | null;
-    responsible?: { text?: string | null } | string | null;
-    arrangementId?: number | null;
-    songId?: number | null;
-    song?: {
-        arrangementId?: number | null;
-        songId?: number | null;
-        title?: string | null;
-    } | null;
-    position?: number;
-    start?: string | null;
-    isBeforeEvent?: boolean;
+    id: ApiAgendaItem['id'];
+    type: ApiAgendaItem['type'];
+    title: ApiAgendaItem['title'] | null;
+    duration?: ApiAgendaItem['duration'];
+    note?: ApiAgendaContentItem['note'] | null;
+    responsible?: ApiAgendaContentItem['responsible'] | string | null;
+    arrangementId?: ApiAgendaSong['arrangementId'] | null;
+    songId?: ApiAgendaSong['songId'] | null;
+    song?: Partial<ApiAgendaSong> | null;
+    position?: ApiAgendaItem['position'];
+    start?: ApiAgendaItem['start'];
+    isBeforeEvent?: ApiAgendaItem['isBeforeEvent'];
 };
 
-export type NativeAgenda = {
-    id: number;
-    calendarId: number;
-    eventStartPosition?: number;
-    isFinal?: boolean;
-    isLocked?: boolean;
-    items: NativeAgendaItem[];
-    name?: string | null;
-    series?: string | null;
-    total?: number;
+type ApiAgenda = GetEventsIdAgendaResponse['data'];
+export type NativeAgenda = Omit<Partial<ApiAgenda>, 'id' | 'calendarId' | 'items'>
+    & Pick<ApiAgenda, 'id' | 'calendarId'> & {
+    items: Array<NativeAgendaItem>;
 };
 
-export type NativeAgendaUpsert = {
-    calendarId: number;
-    eventStartPosition?: number;
-    series?: string | null;
-    items?: NativeAgendaItemInput[];
+export type NativeAgendaItemInput = PostEventsIdAgendaItemsData['body'];
+export type NativeAgendaUpsert = Omit<PutEventsIdAgendaData['body'], 'series'> & {
+    series?: PutEventsIdAgendaData['body']['series'] | null;
 };
 
-export type NativeSong = Song & {
-    id: number;
-    name: string;
-    arrangements?: Arrangement[];
-};
+type ApiSong = GetSongsSongIdResponse['data'];
+export type NativeSong = Omit<Partial<ApiSong>, 'id' | 'name'> & Pick<ApiSong, 'id' | 'name'>;
 
-export type NativeSongCategory = SongCategory & {
-    id: number;
-    name: string;
-};
+type ApiSongCategory = GetSongCategoriesResponse['data'][number];
+export type NativeSongCategory = ApiSongCategory & Required<Pick<ApiSongCategory, 'id' | 'name'>>;
 
-export type NativeArrangement = Arrangement & { id: number };
+export type NativeArrangement = PostSongsSongIdArrangementsResponse['data'];
 
-export type NativeArrangementCreate = {
-    name: string;
-    description?: string | null;
-    duration?: number | null;
-    key?: string | null;
-    beat?: string | null;
-    tempo?: number | null;
+/** Adapter convenience: the default flag is applied through the dedicated PATCH endpoint. */
+export type NativeArrangementCreate = PostSongsSongIdArrangementsData['body'] & {
     isDefault?: boolean;
 };
 
-export type NativeSongCreate = {
-    name: string;
-    categoryId: number;
-    author?: string | null;
-    copyright?: string | null;
-    ccli?: string | null;
-    shouldPractice?: boolean;
-    arrangements?: NativeArrangementCreate[];
-};
-
-export type NativeGlobalPermissions = GlobalPermissions & Record<string, Record<string, unknown> | undefined>;
-
-/** A request body accepted by the current REST agenda item endpoints. */
-export type AgendaItemWireInput = NativeAgendaItemInput;
+export type NativeSongCreate = PostSongsData['body'];
+export type NativeGlobalPermissions = GetPermissionsGlobalResponse['data'];

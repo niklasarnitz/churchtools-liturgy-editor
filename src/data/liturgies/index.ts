@@ -1,6 +1,5 @@
-import { demoBadenLiturgy } from './demo-baden';
-import { demoSelkLiturgy } from './demo-selk';
 import type { LiturgyDefinition } from './types';
+import { badenDurmersheimLiturgy } from './baden-durmersheim';
 
 export type {
     CommunionSectionNode,
@@ -21,5 +20,5 @@ export type {
     SongSlotNode,
 } from './types';
 
-export const liturgies: LiturgyDefinition[] = [demoBadenLiturgy, demoSelkLiturgy];
+export const liturgies: LiturgyDefinition[] = [badenDurmersheimLiturgy];
 export const liturgiesById = Object.fromEntries(liturgies.map((liturgy) => [liturgy.id, liturgy]));

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Card, Icon, Input } from './styleguide';
+import { Button, Card, Icon, Input, Textarea } from './styleguide';
 import { computed, ref, watch } from 'vue';
 
 import type { SongSlotValue } from '../domain/agenda-generation';
@@ -57,9 +57,16 @@ const choose = (song: WorkspaceSong) => {
         songId: song.id,
         arrangementId: arrangement?.id ?? null,
         title: song.name,
+        sourceName: song.category?.name ?? song.hymnalName,
+        number: song.number,
     });
     isOpen.value = false;
     query.value = '';
+};
+
+const updateComment = (comment: string) => {
+    if (!props.modelValue) return;
+    emit('update:modelValue', { ...props.modelValue, comment });
 };
 
 const clear = () => emit('update:modelValue', undefined);
@@ -75,6 +82,15 @@ const clear = () => emit('update:modelValue', undefined);
         <div v-if="selected" class="mt-1 flex items-center justify-between gap-2 text-[11px] text-[#66717d]">
             <span><strong>{{ selected.category?.name ?? 'ChurchTools' }}</strong><span v-if="selected.number"> (Nr. {{ selected.number }})</span> · {{ selected.name }}</span>
             <Button aria-label="Lied entfernen" :icon="'fas fa-xmark'" :text="true" :color="'basic'" size="S" @click="clear" />
+        </div>
+        <div v-if="modelValue" class="mt-2">
+            <label class="mb-1.5 block text-xs font-bold text-[#5e6974]" :for="`song-comment-${label}`">Kommentar hinzufügen</label>
+            <Textarea
+                :id="`song-comment-${label}`"
+                :model-value="modelValue.comment ?? ''"
+                placeholder="z. B. Strophen 1, 3 und 4 · Fietz-Melodie"
+                @update:model-value="updateComment"
+            />
         </div>
         <Card v-if="isOpen" class="absolute left-0 right-0 top-[calc(100%+8px)] z-[5] shadow-[0_14px_32px_rgba(25,37,48,.17)]" :data-cy="`song-picker-${label}`">
             <div class="flex items-center gap-1.5">

@@ -1,15 +1,12 @@
+import type {
+    GetEventsData,
+    GetEventsIdResponse,
+    GetEventsResponse,
+} from '@churchtools/api-types';
 import type { NativeEvent } from './types';
 import type { ChurchToolsRequestClient } from './request';
 
-export type EventListQuery = {
-    from?: string;
-    to?: string;
-    direction?: 'forward' | 'backward';
-    limit?: number;
-    page?: number;
-    canceled?: boolean;
-    include?: 'eventServices';
-};
+export type EventListQuery = NonNullable<GetEventsData['query']>;
 
 export class ChurchToolsEventsAdapter {
     private readonly client: ChurchToolsRequestClient;
@@ -19,10 +16,11 @@ export class ChurchToolsEventsAdapter {
     }
 
     list(query: EventListQuery = {}): Promise<NativeEvent[]> {
-        return this.client.get<NativeEvent[]>('/events', query);
+        const requestQuery: GetEventsData['query'] = query;
+        return this.client.get<GetEventsResponse['data']>('/events', requestQuery);
     }
 
     get(eventId: number): Promise<NativeEvent> {
-        return this.client.get<NativeEvent>(`/events/${eventId}`);
+        return this.client.get<GetEventsIdResponse['data']>(`/events/${eventId}`);
     }
 }

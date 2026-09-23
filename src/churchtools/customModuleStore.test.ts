@@ -43,4 +43,61 @@ describe('ChurchToolsCustomModuleStore module lookup', () => {
         expect(categories.map((category) => category.id)).toEqual([23, 23, 23]);
         expect(categoryCreates).toBe(1);
     });
+
+    it('caches custom values so repeated state writes do not list the category again', async () => {
+        let valueLists = 0;
+        let writes = 0;
+        const value = { id: 31, dataCategoryId: 23, value: JSON.stringify({ key: 'state', data: { count: 0 } }) };
+        const client = {
+            get: (async (uri: string) => {
+                if (uri === '/custommodules') return [{ id: 17, shorty: 'liturgy-editor', name: 'Liturgie-Editor', sortKey: 100 }];
+                if (uri === '/custommodules/17/customdatacategories') {
+                    return [{ id: 23, customModuleId: 17, shorty: 'liturgy-editor', name: 'Liturgy Editor', description: 'state' }];
+                }
+                if (uri.endsWith('/customdatavalues')) {
+                    valueLists += 1;
+                    return [value];
+                }
+                throw new Error(`Unexpected GET ${uri}`);
+            }) as ChurchToolsRequestClient['get'],
+            put: (async (_uri: string, data: Record<string, unknown>) => {
+                writes += 1;
+                return { ...value, value: data.value };
+            }) as ChurchToolsRequestClient['put'],
+        } as ChurchToolsRequestClient;
+        const store = new ChurchToolsCustomModuleStore(client, 'liturgy-editor');
+
+        await store.set('state', { count: 1 });
+        await store.set('state', { count: 2 });
+
+        expect(valueLists).toBe(1);
+        expect(writes).toBe(2);
+        await expect(store.get('state')).resolves.toEqual({ count: 2 });
+    });
+
+    it('deduplicates the first concurrent custom-value load', async () => {
+        let valueLists = 0;
+        const client = {
+            get: (async (uri: string) => {
+                if (uri === '/custommodules') return [{ id: 17, shorty: 'liturgy-editor', name: 'Liturgie-Editor', sortKey: 100 }];
+                if (uri === '/custommodules/17/customdatacategories') {
+                    return [{ id: 23, customModuleId: 17, shorty: 'liturgy-editor', name: 'Liturgy Editor', description: 'state' }];
+                }
+                if (uri.endsWith('/customdatavalues')) {
+                    valueLists += 1;
+                    return [];
+                }
+                throw new Error(`Unexpected GET ${uri}`);
+            }) as ChurchToolsRequestClient['get'],
+        } as ChurchToolsRequestClient;
+        const store = new ChurchToolsCustomModuleStore(client, 'liturgy-editor');
+
+        await Promise.all([
+            store.listValues('liturgy-editor'),
+            store.listValues('liturgy-editor'),
+            store.listValues('liturgy-editor'),
+        ]);
+
+        expect(valueLists).toBe(1);
+    });
 });

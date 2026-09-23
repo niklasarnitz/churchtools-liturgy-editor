@@ -50,11 +50,23 @@ export class ShardedJsonStateStore implements JsonStateStore {
             return;
         }
         const count = Math.ceil(encoded.length / this.chunkSize);
-        const manifest: ShardManifest = { version: 1, chunkCount: count, checksum: checksum(encoded) };
-        await this.store.set(this.manifestKey(key), manifest);
+        const chunks = Array.from(
+            { length: count },
+            (_, index) => encoded.slice(index * this.chunkSize, (index + 1) * this.chunkSize),
+        );
+        const chunkChecksums = chunks.map(checksum);
+        const manifest: ShardManifest = {
+            version: 1,
+            chunkCount: count,
+            checksum: checksum(encoded),
+            chunkChecksums,
+        };
         for (let index = 0; index < count; index += 1) {
-            await this.store.set(this.chunkKey(key, index), { version: 1, data: encoded.slice(index * this.chunkSize, (index + 1) * this.chunkSize) });
+            if (previous?.chunkChecksums?.[index] === chunkChecksums[index]) continue;
+            await this.store.set(this.chunkKey(key, index), { version: 1, data: chunks[index] });
         }
+        // Publish only after every referenced shard is durable.
+        await this.store.set(this.manifestKey(key), manifest);
         if (previous?.chunkCount && previous.chunkCount > count) await this.removeChunks(key, previous.chunkCount - count, count);
     }
 
@@ -83,7 +95,7 @@ export class ShardedJsonStateStore implements JsonStateStore {
     }
 }
 
-type ShardManifest = { version: 1; inline?: unknown; chunkCount?: number; checksum?: string };
+type ShardManifest = { version: 1; inline?: unknown; chunkCount?: number; checksum?: string; chunkChecksums?: string[] };
 type ShardChunk = { version: 1; data: string };
 
 function checksum(value: string): string {

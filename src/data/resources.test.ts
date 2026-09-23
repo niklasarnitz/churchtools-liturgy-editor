@@ -22,12 +22,14 @@ describe('static resource registry', () => {
         expect(resourceRegistry.lectionaries.every((lectionary) => lectionary.version > 0)).toBe(true);
     });
 
-    it('keeps real hymnal data and fixtures appropriately tagged', () => {
-        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'eg-baden')?.demo).not.toBe(true);
-        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'elkg2')?.demo).not.toBe(true);
-        expect(resourceRegistry.hymnals.find((hymnal) => hymnal.id === 'lutheran-service-book')?.demo).not.toBe(true);
-        expect(resourceRegistry.liturgies.every((liturgy) => liturgy.tags.includes('demo'))).toBe(true);
-        expect(resourceRegistry.lectionaries.every((lectionary) => lectionary.id.startsWith('demo-'))).toBe(true);
+    it('ships the real hymnal data and the Durmersheim liturgy without local lectionary fixtures', () => {
+        expect(resourceRegistry.hymnals.map((hymnal) => hymnal.id)).toEqual([
+            'eg-baden',
+            'elkg2',
+            'lutheran-service-book',
+        ]);
+        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-durmersheim']);
+        expect(resourceRegistry.lectionaries).toEqual([]);
     });
 
     it('reports duplicate stable hymn-song IDs', () => {

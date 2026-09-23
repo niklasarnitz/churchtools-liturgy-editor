@@ -1,0 +1,87 @@
+import { createSSRApp, h } from 'vue';
+import { renderToString } from '@vue/server-renderer';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('./styleguide', async () => {
+    const { h: render } = await import('vue');
+    return {
+        Button: (props: { label?: string }) => render('button', props.label),
+        Card: (_props: unknown, context: { slots: { full?: () => ReturnType<typeof render>[] } }) => render('div', null, context.slots.full?.()),
+        EmptyState: (props: { title?: string }) => render('div', props.title),
+        Icon: () => render('span'),
+        ProgressBar: () => render('div'),
+    };
+});
+
+import type { HymnalDefinition } from '../data/hymnals';
+import type { HymnalImportState } from '../domain/imports';
+import HymnalCatalog from './HymnalCatalog.vue';
+
+const hymnal: HymnalDefinition = {
+    id: 'eg-baden',
+    version: 1,
+    name: 'Evangelisches Gesangbuch Baden',
+    shortName: 'EG',
+    organizationIds: ['ekiba'],
+    language: 'de',
+    songs: [{ id: 'eg-baden:1', number: '1', title: 'Macht hoch die Tür' }],
+};
+
+const interruptedImport: HymnalImportState = {
+    operationId: 'eg-baden:1',
+    hymnalId: 'eg-baden',
+    hymnalVersion: 1,
+    status: 'running',
+    total: 1,
+    completed: 0,
+    failed: 0,
+    mappings: {},
+    failures: [],
+    startedAt: '2026-09-22T10:00:00.000Z',
+    updatedAt: '2026-09-22T10:00:01.000Z',
+};
+
+describe('HymnalCatalog interrupted imports', () => {
+    it('does not claim an inactive persisted import is still running', async () => {
+        const app = createSSRApp({
+            render: () => h(HymnalCatalog, {
+                hymnals: [hymnal],
+                installed: () => interruptedImport,
+                busy: false,
+            }),
+        });
+        app.directive('rich-tooltip', {});
+
+        const html = await renderToString(app);
+
+        expect(html).toContain('Import unterbrochen');
+        expect(html).toContain('Import fortsetzen');
+        expect(html).not.toContain('Import läuft');
+    });
+
+    it('shows running only while this hymnal has an active install mutation', async () => {
+        const app = createSSRApp({
+            render: () => h(HymnalCatalog, {
+                hymnals: [hymnal],
+                installed: () => interruptedImport,
+                busy: true,
+                progress: {
+                    operation: 'install',
+                    hymnalId: hymnal.id,
+                    completed: 0,
+                    failed: 0,
+                    total: 1,
+                    percent: 0,
+                    status: 'running',
+                },
+            }),
+        });
+        app.directive('rich-tooltip', {});
+
+        const html = await renderToString(app);
+
+        expect(html).toContain('Import läuft');
+        expect(html).not.toContain('Import fortsetzen');
+        expect(html).not.toContain('Import unterbrochen');
+    });
+});

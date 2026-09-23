@@ -8,9 +8,9 @@ describe('scopeResourceRegistry', () => {
         const scoped = scopeResourceRegistry(resourceRegistry, 'ekiba');
 
         expect(scoped.organizations.map((organization) => organization.id)).toEqual(['ekiba']);
-        expect(scoped.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-predigtgottesdienst-demo']);
+        expect(scoped.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-durmersheim']);
         expect(scoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['eg-baden']);
-        expect(scoped.lectionaries.map((lectionary) => lectionary.id)).toEqual(['demo-minimal']);
+        expect(scoped.lectionaries).toEqual([]);
 
         const selkScoped = scopeResourceRegistry(resourceRegistry, 'selk');
         expect(selkScoped.hymnals.map((hymnal) => hymnal.id)).toEqual(['elkg2']);
@@ -37,6 +37,6 @@ describe('scopeResourceRegistry', () => {
         expect(scoped.organizations).not.toBe(resourceRegistry.organizations);
         expect(scoped.liturgies).not.toBe(resourceRegistry.liturgies);
         expect(resourceRegistry.organizations).toHaveLength(5);
-        expect(resourceRegistry.liturgies).toHaveLength(2);
+        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-durmersheim']);
     });
 });

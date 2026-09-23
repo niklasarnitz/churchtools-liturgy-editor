@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { lectionaries } from '../../data/lectionaries';
-import { liturgiesById } from '../../data/liturgies';
 import { organizationsById } from '../../data/organizations';
+import { testBadenLiturgy, testLectionary, testSelkLiturgy } from '../../test-fixtures/resources';
 import { resolveLiturgicalDay } from '../lectionary';
 import { AgendaGenerationError, generateNormalizedAgenda, type SongSlotValue } from './index';
 
@@ -15,12 +14,12 @@ const songs: Record<string, SongSlotValue> = {
 
 describe('normalized agenda generation', () => {
     it('renders deterministic native-compatible items and node mappings', () => {
-        const template = liturgiesById['baden-predigtgottesdienst-demo'];
-        const day = resolveLiturgicalDay({ date: '2026-09-20', organization: organizationsById.ekiba, lectionaries });
+        const template = testBadenLiturgy;
+        const day = resolveLiturgicalDay({ date: '2026-09-20', organization: organizationsById.ekiba, lectionaries: [testLectionary] });
         const input = {
             template,
             liturgicalDay: day,
-            slots: songs,
+            slots: { ...songs, sermon: 'Lk 14,1–11' },
             optionalSections: { communion: true },
             series: 'III',
         };
@@ -39,8 +38,33 @@ describe('normalized agenda generation', () => {
         expect(first.items.every((item, index) => item.position === index)).toBe(true);
     });
 
+    it('keeps song comments, sermon title/text, fixed text bodies, and responsibilities', () => {
+        const template = {
+            ...testBadenLiturgy,
+            nodes: [
+                { id: 'votum', type: 'fixedText' as const, label: 'Votum', text: 'Im Namen des Vaters.', responsible: '[Liturgie]' },
+                { id: 'song', type: 'songSlot' as const, slot: 'openingSong', label: 'Eingangslied', required: true, responsible: '[Musik]' },
+                { id: 'sermon', type: 'sermonSlot' as const, required: true, label: 'Predigt', responsible: '[Predigt]' },
+            ],
+        };
+
+        const result = generateNormalizedAgenda({
+            template,
+            slots: {
+                openingSong: { kind: 'song', songId: 101, arrangementId: 1001, title: 'Jesus nimmt die Sünder an', comment: 'Strophen 1, 3 und 4' },
+                sermon: { kind: 'sermon', title: 'Schuld erlassen!', text: 'Micha 7,18–20' },
+            },
+        });
+
+        expect(result.items).toEqual([
+            { nodeId: 'votum', position: 0, type: 'text', title: 'Votum', note: 'Im Namen des Vaters.', responsible: '[Liturgie]' },
+            { nodeId: 'song', position: 1, type: 'song', title: 'Eingangslied', note: 'Strophen 1, 3 und 4', responsible: '[Musik]', songId: 101, arrangementId: 1001 },
+            { nodeId: 'sermon', position: 2, type: 'text', title: 'Schuld erlassen!', note: 'Micha 7,18–20', responsible: '[Predigt]' },
+        ]);
+    });
+
     it('omits disabled optional sections without changing stable node IDs', () => {
-        const sourceTemplate = liturgiesById['baden-predigtgottesdienst-demo'];
+        const sourceTemplate = testBadenLiturgy;
         const template = {
             ...sourceTemplate,
             nodes: [
@@ -64,7 +88,7 @@ describe('normalized agenda generation', () => {
     });
 
     it('fails conservatively when a required slot is absent', () => {
-        const template = liturgiesById['selk-hauptgottesdienst-demo'];
+        const template = testSelkLiturgy;
 
         expect(() => generateNormalizedAgenda({ template, optionalSections: { 'lord-table': false } })).toThrow(
             AgendaGenerationError,

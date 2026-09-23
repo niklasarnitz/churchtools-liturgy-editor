@@ -66,7 +66,7 @@ const filtered = computed(() => props.liturgies.filter((liturgy) => {
             <SelectDropdown v-if="traditionOptions.length > 2" v-model="tradition" class="min-w-44" label="Tradition" :options="traditionOptions" :emit-id="true" :clear="false" size="S" />
             <SelectDropdown v-if="serviceTypeOptions.length > 2" v-model="serviceType" class="min-w-48" label="Gottesdiensttyp" :options="serviceTypeOptions" :emit-id="true" :clear="false" size="S" />
         </div>
-        <div v-if="filtered.length === 0" class="grid min-h-[260px] place-items-center rounded-[10px] border border-slate-200 bg-white"><EmptyState title="Keine Liturgie passt zu den Filtern" icon="fas fa-church" /></div>
+        <div v-if="filtered.length === 0" class="grid min-h-[260px] place-items-center rounded-[10px] border border-slate-200 bg-white"><EmptyState :title="liturgies.length === 0 ? 'Keine Liturgievorlage verfügbar' : 'Keine Liturgie passt zu den Filtern'" icon="fas fa-church" /></div>
         <div v-for="liturgy in filtered" :key="liturgy.id">
             <Card>
                 <template #titleFull>

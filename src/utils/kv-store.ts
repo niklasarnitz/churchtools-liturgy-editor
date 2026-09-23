@@ -9,7 +9,10 @@ import type {
     CustomModuleDataCategoryCreate,
     CustomModuleDataValue,
     CustomModuleDataValueCreate,
-} from "./ct-types";
+} from "@churchtools/api-types";
+
+type CustomModuleDataCategoryUpdate = Partial<CustomModuleDataCategoryCreate>;
+type CustomModuleDataValueUpdate = Partial<CustomModuleDataValueCreate>;
 
 /**
  * ────────────────────────────────────────────────
@@ -25,8 +28,9 @@ export async function getModule(
     extensionkey: string = import.meta.env.VITE_KEY,
 ): Promise<CustomModule> {
     //console.log("Extension Key:", extensionkey);
-    const allModules: Array<CustomModule> =
-        await churchtoolsClient.get(`/custommodules`);
+    const allModules = await churchtoolsClient.get<CustomModule[]>(
+        `/custommodules`,
+    );
     //console.log("Retrieving Modules", allModules);
 
     const module = allModules.find(
@@ -65,6 +69,7 @@ async function createModule(
         name: name,
         shorty: extensionkey,
         description: description,
+        inMenu: true,
         sortKey: 100,
     };
 
@@ -106,7 +111,7 @@ export async function getCustomDataCategories<T extends object>(
 ): Promise<(T & Omit<CustomModuleDataCategory, "data">)[]> {
     moduleId = await resolveModuleId(moduleId);
 
-    const categories: CustomModuleDataCategory[] = await churchtoolsClient.get(
+    const categories = await churchtoolsClient.get<CustomModuleDataCategory[]>(
         `/custommodules/${moduleId}/customdatacategories`,
     );
 
@@ -148,7 +153,7 @@ export async function createCustomDataCategory(
     moduleId?: number,
 ): Promise<CustomModuleDataCategory> {
     moduleId = await resolveModuleId(moduleId);
-    const newCategory: CustomModuleDataCategory = await churchtoolsClient.post(
+    const newCategory = await churchtoolsClient.post<CustomModuleDataCategory>(
         `/custommodules/${moduleId}/customdatacategories`,
         payload,
     );
@@ -163,15 +168,14 @@ export async function createCustomDataCategory(
  */
 export async function updateCustomDataCategory(
     dataCategoryId: number,
-    payload: Partial<CustomModuleDataCategory>,
+    payload: CustomModuleDataCategoryUpdate,
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    const updatedCategory: CustomModuleDataCategory =
-        await churchtoolsClient.put(
-            `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`,
-            payload,
-        );
+    const updatedCategory = await churchtoolsClient.put<CustomModuleDataCategory>(
+        `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`,
+        payload,
+    );
     console.log(
         `Updated category ${dataCategoryId} in module ${moduleId}:`,
         updatedCategory,
@@ -188,7 +192,7 @@ export async function deleteCustomDataCategory(
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    await churchtoolsClient.deleteApi(
+    await churchtoolsClient.deleteApi<void>(
         `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}`,
     );
     console.log(`Deleted category ${dataCategoryId} from module ${moduleId}`);
@@ -211,10 +215,9 @@ export async function getCustomDataValues<T extends object>(
 ): Promise<(T & Omit<CustomModuleDataValue, "value">)[]> {
     moduleId = await resolveModuleId(moduleId);
 
-    const values: (Omit<CustomModuleDataValue, "value"> & { value: string })[] =
-        await churchtoolsClient.get(
-            `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues`,
-        );
+    const values = await churchtoolsClient.get<CustomModuleDataValue[]>(
+        `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues`,
+    );
 
     return values.map((val) => {
         const { value, ...rest } = val;
@@ -245,7 +248,7 @@ export async function createCustomDataValue(
     moduleId?: number,
 ): Promise<CustomModuleDataValue> {
     moduleId = await resolveModuleId(moduleId);
-    const newValue: CustomModuleDataValue = await churchtoolsClient.post(
+    const newValue = await churchtoolsClient.post<CustomModuleDataValue>(
         `/custommodules/${moduleId}/customdatacategories/${payload.dataCategoryId}/customdatavalues`,
         payload,
     );
@@ -264,11 +267,11 @@ export async function createCustomDataValue(
 export async function updateCustomDataValue(
     dataCategoryId: number,
     valueId: number,
-    payload: Partial<CustomModuleDataValue>,
+    payload: CustomModuleDataValueUpdate,
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    const updatedValue: CustomModuleDataValue = await churchtoolsClient.put(
+    const updatedValue = await churchtoolsClient.put<CustomModuleDataValue>(
         `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues/${valueId}`,
         payload,
     );
@@ -289,7 +292,7 @@ export async function deleteCustomDataValue(
     moduleId?: number,
 ): Promise<void> {
     moduleId = await resolveModuleId(moduleId);
-    await churchtoolsClient.deleteApi(
+    await churchtoolsClient.deleteApi<void>(
         `/custommodules/${moduleId}/customdatacategories/${dataCategoryId}/customdatavalues/${valueId}`,
     );
     console.log(

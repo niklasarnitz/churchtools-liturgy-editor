@@ -1,3 +1,27 @@
+import type {
+    DeleteSongCategoriesIdResponse,
+    DeleteSongsSongIdArrangementsArrangementIdResponse,
+    DeleteSongsSongIdResponse,
+    GetSongCategoriesResponse,
+    GetSongsData,
+    GetSongsResponse,
+    GetSongsSongIdArrangementsResponse,
+    GetSongsSongIdData,
+    GetSongsSongIdResponse,
+    PatchSongsSongIdArrangementsArrangementIdDefaultResponse,
+    PostSongCategoriesData,
+    PostSongCategoriesResponse,
+    PostSongsData,
+    PostSongsResponse,
+    PostSongsSongIdArrangementsData,
+    PostSongsSongIdArrangementsResponse,
+    PutSongCategoriesIdData,
+    PutSongCategoriesIdResponse,
+    PutSongsSongIdArrangementsArrangementIdData,
+    PutSongsSongIdArrangementsArrangementIdResponse,
+    PutSongsSongIdData,
+    PutSongsSongIdResponse,
+} from '@churchtools/api-types';
 import type { ChurchToolsRequestClient } from './request';
 import { ChurchToolsError } from './errors';
 import type {
@@ -8,15 +32,29 @@ import type {
     NativeSongCreate,
 } from './types';
 
-export type SongListQuery = {
-    query?: string;
-    name?: string;
-    ids?: number[];
-    song_category_ids?: number[];
-    include?: Array<'arrangements' | 'tags'>;
-    limit?: number;
-    page?: number;
+type OpenApiSongListQuery = NonNullable<GetSongsData['query']>;
+
+export type SongListQuery = Omit<OpenApiSongListQuery, 'ids[]' | 'song_category_ids[]'> & {
+    ids?: OpenApiSongListQuery['ids[]'];
+    song_category_ids?: OpenApiSongListQuery['song_category_ids[]'];
 };
+
+function normalizeSongListQuery(query: SongListQuery): OpenApiSongListQuery {
+    const { ids, song_category_ids: songCategoryIds, ...rest } = query;
+    const requestQuery: OpenApiSongListQuery = { ...rest };
+    if (ids) requestQuery['ids[]'] = ids;
+    if (songCategoryIds) requestQuery['song_category_ids[]'] = songCategoryIds;
+    return requestQuery;
+}
+
+function requireNativeSongCategory(
+    category: GetSongCategoriesResponse['data'][number],
+): NativeSongCategory {
+    if (category.id === undefined || category.name === undefined) {
+        throw new ChurchToolsError('ChurchTools returned a song category without id or name.', { kind: 'unknown' });
+    }
+    return { ...category, id: category.id, name: category.name };
+}
 
 export class ChurchToolsSongsAdapter {
     private readonly client: ChurchToolsRequestClient;
@@ -26,64 +64,93 @@ export class ChurchToolsSongsAdapter {
     }
 
     list(query: SongListQuery = {}): Promise<NativeSong[]> {
-        const params: Record<string, unknown> = { ...query };
-        if (query.ids) params['ids[]'] = query.ids;
-        if (query.song_category_ids) params['song_category_ids[]'] = query.song_category_ids;
-        return this.client.get<NativeSong[]>('/songs', params);
+        const requestQuery: GetSongsData['query'] = normalizeSongListQuery(query);
+        return this.client.get<GetSongsResponse['data']>('/songs', requestQuery);
     }
 
-    get(songId: number, include: Array<'arrangements' | 'tags'> = ['arrangements']): Promise<NativeSong> {
-        return this.client.get<NativeSong>(`/songs/${songId}`, { include });
+    get(
+        songId: number,
+        include: NonNullable<GetSongsSongIdData['query']>['include'] = ['arrangements'],
+    ): Promise<NativeSong> {
+        const query: GetSongsSongIdData['query'] = { include };
+        return this.client.get<GetSongsSongIdResponse['data']>(`/songs/${songId}`, query);
     }
 
     create(input: NativeSongCreate): Promise<NativeSong> {
-        return this.client.post<NativeSong>('/songs', input);
+        const body: PostSongsData['body'] = input;
+        return this.client.post<PostSongsResponse['data']>('/songs', body);
     }
 
     update(songId: number, input: NativeSongCreate): Promise<NativeSong> {
-        return this.client.put<NativeSong>(`/songs/${songId}`, input);
+        const body: PutSongsSongIdData['body'] = input;
+        return this.client.put<PutSongsSongIdResponse['data']>(`/songs/${songId}`, body);
     }
 
     delete(songId: number): Promise<void> {
-        return this.client.deleteApi<void>(`/songs/${songId}`);
+        return this.client.deleteApi<DeleteSongsSongIdResponse>(`/songs/${songId}`);
     }
 
-    listCategories(): Promise<NativeSongCategory[]> {
-        return this.client.get<NativeSongCategory[]>('/song/categories');
+    async listCategories(): Promise<NativeSongCategory[]> {
+        const categories = await this.client.get<GetSongCategoriesResponse['data']>('/song/categories');
+        return categories.map(requireNativeSongCategory);
     }
 
-    createCategory(input: { name: string; campusId?: number | null; sortKey?: number }): Promise<NativeSongCategory> {
-        return this.client.post<NativeSongCategory>('/song/categories', input);
+    async createCategory(input: PostSongCategoriesData['body']): Promise<NativeSongCategory> {
+        const body: PostSongCategoriesData['body'] = input;
+        const category = await this.client.post<PostSongCategoriesResponse['data']>('/song/categories', body);
+        return requireNativeSongCategory(category);
     }
 
-    updateCategory(categoryId: number, input: { name: string; campusId?: number | null; sortKey?: number }): Promise<NativeSongCategory> {
-        return this.client.put<NativeSongCategory>(`/song/categories/${categoryId}`, input);
+    async updateCategory(categoryId: number, input: PutSongCategoriesIdData['body']): Promise<NativeSongCategory> {
+        const body: PutSongCategoriesIdData['body'] = input;
+        const category = await this.client.put<PutSongCategoriesIdResponse['data']>(`/song/categories/${categoryId}`, body);
+        return requireNativeSongCategory(category);
     }
 
     deleteCategory(categoryId: number): Promise<void> {
-        return this.client.deleteApi<void>(`/song/categories/${categoryId}`);
+        return this.client.deleteApi<DeleteSongCategoriesIdResponse>(`/song/categories/${categoryId}`);
     }
 
     listArrangements(songId: number): Promise<NativeArrangement[]> {
-        return this.client.get<NativeArrangement[]>(`/songs/${songId}/arrangements`);
+        return this.client.get<GetSongsSongIdArrangementsResponse['data']>(`/songs/${songId}/arrangements`);
     }
 
-    createArrangement(songId: number, input: NativeArrangementCreate): Promise<NativeArrangement> {
-        return this.client.post<NativeArrangement>(`/songs/${songId}/arrangements`, input);
+    async createArrangement(songId: number, input: NativeArrangementCreate): Promise<NativeArrangement> {
+        const { isDefault, ...arrangementInput } = input;
+        const body: PostSongsSongIdArrangementsData['body'] = arrangementInput;
+        const arrangement = await this.client.post<PostSongsSongIdArrangementsResponse['data']>(
+            `/songs/${songId}/arrangements`,
+            body,
+        );
+        if (!isDefault) return arrangement;
+        await this.makeDefaultArrangement(songId, arrangement.id);
+        return { ...arrangement, isDefault: true };
     }
 
-    updateArrangement(songId: number, arrangementId: number, input: NativeArrangementCreate): Promise<NativeArrangement> {
-        return this.client.put<NativeArrangement>(`/songs/${songId}/arrangements/${arrangementId}`, input);
+    updateArrangement(
+        songId: number,
+        arrangementId: number,
+        input: PutSongsSongIdArrangementsArrangementIdData['body'],
+    ): Promise<NativeArrangement> {
+        const body: PutSongsSongIdArrangementsArrangementIdData['body'] = input;
+        return this.client.put<PutSongsSongIdArrangementsArrangementIdResponse['data']>(
+            `/songs/${songId}/arrangements/${arrangementId}`,
+            body,
+        );
     }
 
     deleteArrangement(songId: number, arrangementId: number): Promise<void> {
-        return this.client.deleteApi<void>(`/songs/${songId}/arrangements/${arrangementId}`);
+        return this.client.deleteApi<DeleteSongsSongIdArrangementsArrangementIdResponse>(
+            `/songs/${songId}/arrangements/${arrangementId}`,
+        );
     }
 
     makeDefaultArrangement(songId: number, arrangementId: number): Promise<void> {
         if (!this.client.patch) {
             return Promise.reject(new ChurchToolsError('The configured ChurchTools client does not support PATCH.', { kind: 'unknown' }));
         }
-        return this.client.patch<void>(`/songs/${songId}/arrangements/${arrangementId}/default`, {});
+        return this.client.patch<PatchSongsSongIdArrangementsArrangementIdDefaultResponse>(
+            `/songs/${songId}/arrangements/${arrangementId}/default`,
+        );
     }
 }

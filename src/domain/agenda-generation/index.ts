@@ -4,5 +4,6 @@ export type {
     AgendaSlotValue,
     NormalizedAgenda,
     NormalizedAgendaItem,
+    SermonSlotValue,
     SongSlotValue,
 } from './types';

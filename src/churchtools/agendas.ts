@@ -1,14 +1,38 @@
+import type {
+    DeleteEventsIdAgendaItemsIdResponse,
+    DeleteEventsIdAgendaResponse,
+    GetEventsIdAgendaResponse,
+    GetEventsIdAgendaSongsResponse,
+    PostEventsIdAgendaItemsData,
+    PostEventsIdAgendaItemsResponse,
+    PutEventsIdAgendaData,
+    PutEventsIdAgendaItemsIdData,
+    PutEventsIdAgendaItemsIdResponse,
+    PutEventsIdAgendaResponse,
+} from '@churchtools/api-types';
 import type { ChurchToolsRequestClient } from './request';
 import type { NativeAgenda, NativeAgendaItem, NativeAgendaItemInput, NativeAgendaUpsert, NativeSong } from './types';
 
-export type AgendaItemPlacement = { beforeId?: number; afterId?: number };
+type AgendaItemPlacementQuery = NonNullable<PostEventsIdAgendaItemsData['query']>
+    & NonNullable<PutEventsIdAgendaItemsIdData['query']>;
 
-function placementQuery(placement: AgendaItemPlacement): string {
+export type AgendaItemPlacement = {
+    beforeId?: AgendaItemPlacementQuery['before_id'];
+    afterId?: AgendaItemPlacementQuery['after_id'];
+};
+
+function placementQuery(placement: AgendaItemPlacement): AgendaItemPlacementQuery {
     if (placement.beforeId !== undefined && placement.afterId !== undefined) {
         throw new Error('ChurchTools agenda items accept either before_id or after_id, not both.');
     }
-    if (placement.beforeId !== undefined) return `?before_id=${placement.beforeId}`;
-    if (placement.afterId !== undefined) return `?after_id=${placement.afterId}`;
+    if (placement.beforeId !== undefined) return { before_id: placement.beforeId };
+    if (placement.afterId !== undefined) return { after_id: placement.afterId };
+    return {};
+}
+
+function placementSuffix(query: AgendaItemPlacementQuery): string {
+    if (query.before_id !== undefined) return `?before_id=${query.before_id}`;
+    if (query.after_id !== undefined) return `?after_id=${query.after_id}`;
     return '';
 }
 
@@ -20,21 +44,28 @@ export class ChurchToolsAgendasAdapter {
     }
 
     get(eventId: number): Promise<NativeAgenda> {
-        return this.client.get<NativeAgenda>(`/events/${eventId}/agenda`);
+        return this.client.get<GetEventsIdAgendaResponse['data']>(`/events/${eventId}/agenda`);
     }
 
     upsert(eventId: number, agenda: NativeAgendaUpsert): Promise<NativeAgenda> {
-        return this.client.put<NativeAgenda>(`/events/${eventId}/agenda`, agenda);
+        const { series, ...agendaBody } = agenda;
+        const body: PutEventsIdAgendaData['body'] = {
+            ...agendaBody,
+            ...(series === null ? {} : { series }),
+        };
+        return this.client.put<PutEventsIdAgendaResponse['data']>(`/events/${eventId}/agenda`, body);
     }
 
     delete(eventId: number): Promise<void> {
-        return this.client.deleteApi<void>(`/events/${eventId}/agenda`);
+        return this.client.deleteApi<DeleteEventsIdAgendaResponse>(`/events/${eventId}/agenda`);
     }
 
     createItem(eventId: number, item: NativeAgendaItemInput, placement: AgendaItemPlacement = {}): Promise<NativeAgendaItem> {
-        return this.client.post<NativeAgendaItem>(
-            `/events/${eventId}/agenda/items${placementQuery(placement)}`,
-            item,
+        const body: PostEventsIdAgendaItemsData['body'] = item;
+        const query: PostEventsIdAgendaItemsData['query'] = placementQuery(placement);
+        return this.client.post<PostEventsIdAgendaItemsResponse['data']>(
+            `/events/${eventId}/agenda/items${placementSuffix(query)}`,
+            body,
         );
     }
 
@@ -44,18 +75,20 @@ export class ChurchToolsAgendasAdapter {
         item: NativeAgendaItemInput,
         placement: AgendaItemPlacement = {},
     ): Promise<NativeAgendaItem> {
-        return this.client.put<NativeAgendaItem>(
-            `/events/${eventId}/agenda/items/${itemId}${placementQuery(placement)}`,
-            item,
+        const body: PutEventsIdAgendaItemsIdData['body'] = item;
+        const query: PutEventsIdAgendaItemsIdData['query'] = placementQuery(placement);
+        return this.client.put<PutEventsIdAgendaItemsIdResponse['data']>(
+            `/events/${eventId}/agenda/items/${itemId}${placementSuffix(query)}`,
+            body,
         );
     }
 
     deleteItem(eventId: number, itemId: number): Promise<void> {
-        return this.client.deleteApi<void>(`/events/${eventId}/agenda/items/${itemId}`);
+        return this.client.deleteApi<DeleteEventsIdAgendaItemsIdResponse>(`/events/${eventId}/agenda/items/${itemId}`);
     }
 
     listSongs(eventId: number): Promise<NativeSong[]> {
-        return this.client.get<NativeSong[]>(`/events/${eventId}/agenda/songs`);
+        return this.client.get<GetEventsIdAgendaSongsResponse['data']>(`/events/${eventId}/agenda/songs`);
     }
 }
 
@@ -80,6 +113,7 @@ export class ChurchToolsAgendaSongUsageChecker {
     private readonly eventIds: readonly number[];
     private readonly agendas: ChurchToolsAgendasAdapter;
     private readonly coverage: AgendaSongUsageCoverage;
+    private usedSongIds?: Promise<Set<number>>;
 
     constructor(
         agendas: ChurchToolsAgendasAdapter,
@@ -106,10 +140,16 @@ export class ChurchToolsAgendaSongUsageChecker {
 
     async isSongUsed(songId: number): Promise<boolean> {
         if (!this.coverage.complete) throw new Error(this.coverage.reason ?? 'Song usage coverage is incomplete.');
+        this.usedSongIds ??= this.loadUsedSongIds();
+        return (await this.usedSongIds).has(songId);
+    }
+
+    private async loadUsedSongIds(): Promise<Set<number>> {
+        const usedSongIds = new Set<number>();
         for (const eventId of this.eventIds) {
             const songs = await this.agendas.listSongs(eventId);
-            if (songs.some((song) => song.id === songId)) return true;
+            for (const song of songs) usedSongIds.add(song.id);
         }
-        return false;
+        return usedSongIds;
     }
 }

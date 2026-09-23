@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { EmptyState, Icon } from './styleguide';
+import EmptyState from '@churchtools/styleguide-components/basic/emptyState/EmptyState.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
 import HymnalCatalog from './HymnalCatalog.vue';
 import SettingsOrganizationSelector from './SettingsOrganizationSelector.vue';
 import SettingsDiagnostics from './SettingsDiagnostics.vue';
-import type { HymnalDefinition } from '../data/hymnals';
-import type { OrganizationDefinition } from '../data/organizations';
-import type { HymnalImportState } from '../domain/imports';
+import type { HymnalDefinition } from '../data/hymnals/types';
+import type { OrganizationDefinition } from '../data/organizations/types';
+import type { HymnalImportState } from '../domain/imports/types';
 import type { ImportProgressView } from './types';
 
 const props = defineProps<{

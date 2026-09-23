@@ -2,19 +2,14 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./styleguide', async () => {
-    const { h: render } = await import('vue');
-    return {
-        Button: (props: { label?: string }) => render('button', props.label),
-        Card: (_props: unknown, context: { slots: { full?: () => ReturnType<typeof render>[] } }) => render('div', null, context.slots.full?.()),
-        EmptyState: (props: { title?: string }) => render('div', props.title),
-        Icon: () => render('span'),
-        ProgressBar: () => render('div'),
-    };
-});
+vi.mock('@churchtools/styleguide-components/form/button/Button.vue', () => ({ default: (props: { label?: string }) => h('button', props.label) }));
+vi.mock('@churchtools/styleguide-components/layout/card/Card.vue', () => ({ default: (_props: unknown, context: { slots: { full?: () => ReturnType<typeof h>[] } }) => h('div', null, context.slots.full?.()) }));
+vi.mock('@churchtools/styleguide-components/basic/emptyState/EmptyState.vue', () => ({ default: (props: { title?: string }) => h('div', props.title) }));
+vi.mock('@churchtools/styleguide-components/content/icon/Icon.vue', () => ({ default: () => h('span') }));
+vi.mock('@churchtools/styleguide-components/infos/ProgressBar.vue', () => ({ default: () => h('div') }));
 
-import type { HymnalDefinition } from '../data/hymnals';
-import type { HymnalImportState } from '../domain/imports';
+import type { HymnalDefinition } from '../data/hymnals/types';
+import type { HymnalImportState } from '../domain/imports/types';
 import HymnalCatalog from './HymnalCatalog.vue';
 
 const hymnal: HymnalDefinition = {

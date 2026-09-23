@@ -2,20 +2,28 @@ import { computed, reactive, ref } from 'vue';
 import type { GetWhoamiResponse } from '@churchtools/api-types';
 import { useMutation, type QueryClient } from '@tanstack/vue-query';
 
-import { ChurchToolsAgendasAdapter, ChurchToolsClientAdapter, ChurchToolsCustomModuleStore, ChurchToolsEventsAdapter, ChurchToolsPermissionsAdapter, ChurchToolsSongsAdapter, type NativeAgenda } from '../churchtools';
+import { ChurchToolsAgendasAdapter } from '../churchtools/agendas';
+import { ChurchToolsClientAdapter } from '../churchtools/client';
+import { ChurchToolsCustomModuleStore } from '../churchtools/customModuleStore';
+import { ChurchToolsEventsAdapter } from '../churchtools/events';
+import { ChurchToolsPermissionsAdapter } from '../churchtools/permissions';
+import { ChurchToolsSongsAdapter } from '../churchtools/songs';
+import type { NativeAgenda } from '../churchtools/types';
 import { userFacingChurchToolsMessage } from '../churchtools/errors';
-import { FetchLectionarySource, LiturgyEditorApplication, type InstallationSettings } from '../application';
+import { FetchLectionarySource } from '../application/lectionary-fetch';
+import { LiturgyEditorApplication } from '../application/service';
+import type { InstallationSettings } from '../application/types';
 import { scopeResourceRegistry } from '../application/resource-scope';
-import type { HymnalImportState } from '../domain/imports';
-import type { AgendaSlotValue } from '../domain/agenda-generation';
-import type { HymnalDefinition } from '../data/hymnals';
-import type { LectionaryDefinition } from '../data/lectionaries';
-import type { OrganizationDefinition } from '../data/organizations';
+import type { HymnalImportState } from '../domain/imports/types';
+import type { AgendaSlotValue } from '../domain/agenda-generation/types';
+import type { HymnalDefinition } from '../data/hymnals/types';
+import type { LectionaryDefinition } from '../data/lectionaries/types';
+import type { OrganizationDefinition } from '../data/organizations/types';
 import { resourceRegistry } from '../data/registry';
-import type { LiturgyDefinition } from '../data/liturgies';
-import type { ManagedAgenda } from '../domain/managed-agendas';
-import type { SavedBlock } from '../domain/liturgies/blocks';
 import type { WorkspaceEvent, WorkspaceSong, WorkspaceStatus, ImportProgressView, AgendaDriftView } from './types';
+import type { LiturgyDefinition } from '../data/liturgies/types';
+import type { ManagedAgenda } from '../domain/managed-agendas/types';
+import type { SavedBlock } from '../domain/liturgies/blocks';
 import { createWorkspaceQueryClient } from './query';
 import { workspaceQueryKeys } from './workspaceQueryKeys';
 
@@ -370,7 +378,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const saveSavedBlocks = (event: WorkspaceEvent, organizationId: string, userId: number, blocks: SavedBlock[]): Promise<void> =>
         application.savePersonalBlocks(event.id, organizationId, userId, blocks);
 
-    const saveAgenda = async (event: WorkspaceEvent, template: LiturgyDefinition, slots: Readonly<Record<string, AgendaSlotValue | undefined>>, options: { series?: string; force?: boolean; expectedNativeFingerprint?: string | null; optionalSections?: Readonly<Record<string, boolean>>; liturgicalDay?: import('../data/lectionaries').LiturgicalDay; nodes?: LiturgyDefinition['nodes']; variantKey?: string; selectedDate?: string } = {}): Promise<ManagedAgenda> => {
+    const saveAgenda = async (event: WorkspaceEvent, template: LiturgyDefinition, slots: Readonly<Record<string, AgendaSlotValue | undefined>>, options: { series?: string; force?: boolean; expectedNativeFingerprint?: string | null; optionalSections?: Readonly<Record<string, boolean>>; liturgicalDay?: import('../data/lectionaries/types').LiturgicalDay; nodes?: LiturgyDefinition['nodes']; variantKey?: string; selectedDate?: string } = {}): Promise<ManagedAgenda> => {
         if (!installationSettings.value.organizationId) {
             const message = 'Für diese ChurchTools-Installation ist kein Kirchenkörper festgelegt. Bitte wende dich an einen Administrator.';
             error.value = message;
@@ -423,7 +431,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         series?: string;
         variantKey?: string;
         selectedDate?: string;
-        liturgicalDay?: import('../data/lectionaries').LiturgicalDay;
+        liturgicalDay?: import('../data/lectionaries/types').LiturgicalDay;
         nativeAgenda?: NativeAgenda;
         managed?: ManagedAgenda;
         snapshotAvailable: boolean;

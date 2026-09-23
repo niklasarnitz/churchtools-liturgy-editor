@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Card, Icon } from './styleguide';
-import type { OrganizationDefinition } from '../data/organizations';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import type { OrganizationDefinition } from '../data/organizations/types';
 
 const props = defineProps<{
     selectedOrganization?: OrganizationDefinition;

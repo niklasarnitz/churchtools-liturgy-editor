@@ -3,7 +3,6 @@ import elkg2Data from './elkg2.json';
 import lutheranServiceBookData from './lutheran-service-book.json';
 import type { HymnalDefinition } from './types';
 
-export type { HymnalDefinition, HymnalSong } from './types';
 
 export const egBaden = egBadenData satisfies HymnalDefinition;
 export const elkg2 = elkg2Data satisfies HymnalDefinition;

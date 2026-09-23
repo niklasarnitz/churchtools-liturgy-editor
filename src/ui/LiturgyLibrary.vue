@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { Button, Card, EmptyState, Icon, Input, SelectDropdown } from './styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import EmptyState from '@churchtools/styleguide-components/basic/emptyState/EmptyState.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import Input from '@churchtools/styleguide-components/form/input/Input.vue';
+import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
 import { computed, ref } from 'vue';
 
-import type { LiturgyDefinition } from '../data/liturgies';
-import type { OrganizationDefinition } from '../data/organizations';
+import type { LiturgyDefinition } from '../data/liturgies/types';
+import type { OrganizationDefinition } from '../data/organizations/types';
 
 const props = defineProps<{ liturgies: LiturgyDefinition[]; organizations?: OrganizationDefinition[]; canUse?: boolean }>();
 const emit = defineEmits<{ (event: 'use', liturgy: LiturgyDefinition): void }>();

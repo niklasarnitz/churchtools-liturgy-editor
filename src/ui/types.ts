@@ -1,7 +1,7 @@
-import type { NativeAgenda, NativeEvent } from '../churchtools';
+import type { NativeAgenda, NativeEvent } from '../churchtools/types';
 import type { ServiceStatus } from '../application/types';
-import type { HymnalImportState } from '../domain/imports';
-import type { ManagedAgenda } from '../domain/managed-agendas';
+import type { HymnalImportState } from '../domain/imports/types';
+import type { ManagedAgenda } from '../domain/managed-agendas/types';
 import type { AgendaDriftReason } from '../domain/reconciliation/fingerprint';
 
 export type WorkspaceStatus = 'idle' | 'loading' | 'ready' | 'error';

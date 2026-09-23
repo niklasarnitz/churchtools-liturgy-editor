@@ -1,4 +1,4 @@
-import type { LiturgicalDay, ScriptureReference } from '../data/lectionaries';
+import type { LiturgicalDay, ScriptureReference } from '../data/lectionaries/types';
 import type { ExternalLectionarySource } from './types';
 
 export type LectionaryFetch = (input: string, init?: RequestInit) => Promise<Response>;

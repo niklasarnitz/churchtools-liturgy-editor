@@ -1,11 +1,11 @@
-import { hymnals } from './hymnals';
-import type { HymnalDefinition } from './hymnals';
-import { lectionaries } from './lectionaries';
-import type { LectionaryDefinition } from './lectionaries';
-import { liturgies } from './liturgies';
-import type { LiturgyDefinition } from './liturgies';
-import { organizations } from './organizations';
-import type { OrganizationDefinition } from './organizations';
+import { hymnals } from './hymnals/catalog';
+import type { HymnalDefinition } from './hymnals/types';
+import { lectionaries } from './lectionaries/catalog';
+import type { LectionaryDefinition } from './lectionaries/types';
+import { liturgies } from './liturgies/catalog';
+import type { LiturgyDefinition } from './liturgies/types';
+import { organizations } from './organizations/catalog';
+import type { OrganizationDefinition } from './organizations/types';
 
 export interface ResourceRegistry {
     organizations: OrganizationDefinition[];

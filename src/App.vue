@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { Button, Card, DialogSmall, EmptyState, Icon, LoadingMessage, ProgressBar, SelectDropdown } from './ui/styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import DialogSmall from '@churchtools/styleguide-components/overlays/dialog/DialogSmall.vue';
+import EmptyState from '@churchtools/styleguide-components/basic/emptyState/EmptyState.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import LoadingMessage from '@churchtools/styleguide-components/basic/loading/LoadingMessage.vue';
+import ProgressBar from '@churchtools/styleguide-components/infos/ProgressBar.vue';
+import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 
-import type { HymnalDefinition } from './data/hymnals';
-import type { LiturgyDefinition } from './data/liturgies';
+import type { HymnalDefinition } from './data/hymnals/types';
+import type { LiturgyDefinition } from './data/liturgies/types';
 import { useWorkspace } from './ui/useWorkspace';
 import type { AgendaDriftView, WorkspaceEvent } from './ui/types';
 import type { ExtensionPoint } from './ui/context';
@@ -12,11 +19,11 @@ import LiturgyLibrary from './ui/LiturgyLibrary.vue';
 import ServiceEditor from './ui/ServiceEditor.vue';
 import SettingsView from './ui/SettingsView.vue';
 import ServiceList from './ui/ServiceList.vue';
-import { formatScriptureReference } from './domain/lectionary';
+import { formatScriptureReference } from './domain/lectionary/resolver';
 import { resourceRegistry } from './data/registry';
-import type { HymnalImportState } from './domain/imports';
+import type { HymnalImportState } from './domain/imports/types';
 import type { AgendaDriftReason } from './domain/reconciliation/fingerprint';
-import type { NativeAgenda, NativeAgendaItem } from './churchtools';
+import type { NativeAgenda, NativeAgendaItem } from './churchtools/types';
 import { agendaFingerprint } from './domain/reconciliation/fingerprint';
 import { workspaceQueryClient } from './ui/query';
 

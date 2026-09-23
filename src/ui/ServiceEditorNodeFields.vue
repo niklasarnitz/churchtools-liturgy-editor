@@ -2,8 +2,8 @@
 import Input from '@churchtools/styleguide-components/form/input/Input.vue';
 import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
 import Textarea from '@churchtools/styleguide-components/form/textarea/Textarea.vue';
-import type { LiturgyNode, ReadingSlotKey } from '../data/liturgies';
-import type { SongSlotValue } from '../domain/agenda-generation';
+import type { LiturgyNode, ReadingSlotKey } from '../data/liturgies/types';
+import type { SongSlotValue } from '../domain/agenda-generation/types';
 import type { WorkspaceArrangement, WorkspaceSong } from './types';
 import SongPicker from './SongPicker.vue';
 

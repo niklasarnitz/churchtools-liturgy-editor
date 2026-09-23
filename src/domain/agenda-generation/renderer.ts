@@ -1,18 +1,5 @@
-import type { LiturgicalDay, ScriptureReference } from '../../data/lectionaries';
-import type {
-    CommunionSectionNode,
-    CreedNode,
-    FixedTextNode,
-    FreeTextSlotNode,
-    HeadingNode,
-    LiturgyNode,
-    OptionalSectionNode,
-    PrayerNode,
-    ReadingSlotNode,
-    RubricNode,
-    SermonSlotNode,
-    SongSlotNode,
-} from '../../data/liturgies';
+import type { LiturgicalDay, ScriptureReference } from '../../data/lectionaries/types';
+import type { CommunionSectionNode, CreedNode, FixedTextNode, FreeTextSlotNode, HeadingNode, LiturgyNode, OptionalSectionNode, PrayerNode, ReadingSlotNode, RubricNode, SermonSlotNode, SongSlotNode } from '../../data/liturgies/types';
 import type {
     AgendaGenerationInput,
     AgendaSlotValue,

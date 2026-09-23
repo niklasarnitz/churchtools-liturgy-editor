@@ -1,4 +1,4 @@
-import type { HymnalDefinition } from '../../data/hymnals';
+import type { HymnalDefinition } from '../../data/hymnals/types';
 
 export type OperationStatus = 'pending' | 'running' | 'partially-completed' | 'completed' | 'failed';
 

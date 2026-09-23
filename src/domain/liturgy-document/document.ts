@@ -1,5 +1,5 @@
-import type { AgendaSlotValue, NormalizedAgenda, SermonSlotValue, SongSlotValue } from '../agenda-generation';
-import type { LiturgyDefinition, LiturgyNode } from '../../data/liturgies';
+import type { AgendaSlotValue, NormalizedAgenda, SermonSlotValue, SongSlotValue } from '../agenda-generation/types';
+import type { LiturgyDefinition, LiturgyNode } from '../../data/liturgies/types';
 
 export interface PrintableEventService {
     name?: string | null;

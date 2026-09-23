@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { resourceRegistry } from './registry';
-import { assertValidResourceRegistry, validateResourceRegistry } from '../domain/liturgies';
-import { organizations } from './organizations';
+import { assertValidResourceRegistry, validateResourceRegistry } from '../domain/liturgies/validation';
+import { organizations } from './organizations/catalog';
 
 describe('static resource registry', () => {
     it('keeps the supported organization IDs stable', () => {

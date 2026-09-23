@@ -1,5 +1,5 @@
-import type { LiturgicalDay, ScriptureReference } from '../../data/lectionaries';
-import type { LiturgyDefinition } from '../../data/liturgies';
+import type { LiturgicalDay, ScriptureReference } from '../../data/lectionaries/types';
+import type { LiturgyDefinition } from '../../data/liturgies/types';
 
 export interface SongSlotValue {
     kind: 'song';

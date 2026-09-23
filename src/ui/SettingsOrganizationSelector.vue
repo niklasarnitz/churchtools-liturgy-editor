@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Button, Card, Icon, SelectDropdown } from './styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
 import RadioGroup from '@churchtools/styleguide-components/form/radioGroup/RadioGroup.vue';
 import { SUPPORTED_ORGANIZATIONS } from './supported-organizations';
-import type { OrganizationDefinition } from '../data/organizations';
+import type { OrganizationDefinition } from '../data/organizations/types';
 
 const props = defineProps<{ selectedOrganizationId?: string; organizations: OrganizationDefinition[]; busy?: boolean; canManageSettings?: boolean }>();
 const emit = defineEmits<{ (event: 'selectOrganization', organizationId: string): void }>();

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { organizationsById } from '../../data/organizations';
+import { organizationsById } from '../../data/organizations/catalog';
 import { testBadenLiturgy, testLectionary, testSelkLiturgy } from '../../test-fixtures/resources';
-import { resolveLiturgicalDay } from '../lectionary';
-import { AgendaGenerationError, generateNormalizedAgenda, type SongSlotValue } from './index';
+import { resolveLiturgicalDay } from '../lectionary/resolver';
+import { AgendaGenerationError, generateNormalizedAgenda } from './renderer';
+import type { SongSlotValue } from './types';
 
 const songs: Record<string, SongSlotValue> = {
     openingSong: { kind: 'song', songId: 101, arrangementId: 1001, title: 'Morgenlicht der Hoffnung' },

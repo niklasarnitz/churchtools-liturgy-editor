@@ -1,4 +1,4 @@
-import type { HymnalDefinition, HymnalSong } from '../../data/hymnals';
+import type { HymnalDefinition, HymnalSong } from '../../data/hymnals/types';
 import { ChurchToolsError, toChurchToolsError } from '../../churchtools/errors';
 import { mapWithConcurrency } from '../../churchtools/retry';
 import type {

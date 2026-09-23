@@ -1,5 +1,5 @@
-import type { AgendaSlotValue } from '../agenda-generation';
-import type { LiturgyNode, ReadingSlotKey, ServiceBlockNode } from '../../data/liturgies';
+import type { AgendaSlotValue } from '../agenda-generation/types';
+import type { LiturgyNode, ReadingSlotKey, ServiceBlockNode } from '../../data/liturgies/types';
 
 export interface SavedBlock {
     id: string;

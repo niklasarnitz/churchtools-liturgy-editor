@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { badenDurmersheimLiturgy } from '../../data/liturgies/baden-durmersheim';
-import type { LiturgyDefinition } from '../../data/liturgies';
-import { generateNormalizedAgenda, type AgendaSlotValue } from '../agenda-generation';
+import type { LiturgyDefinition } from '../../data/liturgies/types';
+import { generateNormalizedAgenda } from '../agenda-generation/renderer';
+import type { AgendaSlotValue } from '../agenda-generation/types';
 import { buildLiturgyDocumentHtml } from './document';
 
 const song = { kind: 'song' as const, songId: 10, arrangementId: 100, sourceName: 'EG', number: '1', title: 'Testlied' };

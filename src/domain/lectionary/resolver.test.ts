@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { organizationsById } from '../../data/organizations';
+import { organizationsById } from '../../data/organizations/catalog';
 import { testBadenLiturgy, testLectionary } from '../../test-fixtures/resources';
 import { resolveLiturgicalDay } from './resolver';
 

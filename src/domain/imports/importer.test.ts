@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { HymnalDefinition } from '../../data/hymnals';
+import type { HymnalDefinition } from '../../data/hymnals/types';
 import type { NativeArrangement, NativeSong, NativeSongCategory, NativeSongCreate } from '../../churchtools/types';
 import { HymnalImporter, type HymnalSongPort } from './importer';
 import type { HymnalImportState, HymnalImportStateRepository } from './types';

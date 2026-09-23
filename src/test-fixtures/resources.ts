@@ -1,7 +1,7 @@
-import { hymnals } from '../data/hymnals';
-import type { LectionaryDefinition } from '../data/lectionaries';
-import type { LiturgyDefinition } from '../data/liturgies';
-import { organizations } from '../data/organizations';
+import { hymnals } from '../data/hymnals/catalog';
+import type { LectionaryDefinition } from '../data/lectionaries/types';
+import type { LiturgyDefinition } from '../data/liturgies/types';
+import { organizations } from '../data/organizations/catalog';
 import type { ResourceRegistry } from '../data/registry';
 
 export const testLectionary: LectionaryDefinition = {

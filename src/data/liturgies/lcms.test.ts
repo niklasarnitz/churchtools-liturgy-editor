@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { generateNormalizedAgenda } from '../../domain/agenda-generation';
+import { generateNormalizedAgenda } from '../../domain/agenda-generation/renderer';
 import { lcmsLiturgies } from './lcms';
 
 describe('LCMS Divine Service outlines', () => {

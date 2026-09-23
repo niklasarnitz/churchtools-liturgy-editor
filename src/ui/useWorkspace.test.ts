@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { useWorkspace } from './useWorkspace';
 import { resourceRegistry } from '../data/registry';
 import type { WorkspaceEvent } from './types';
-import type { LiturgyDefinition } from '../data/liturgies';
-import type { HymnalDefinition } from '../data/hymnals';
+import type { LiturgyDefinition } from '../data/liturgies/types';
+import type { HymnalDefinition } from '../data/hymnals/types';
 import { ChurchToolsPermissionsAdapter } from '../churchtools/permissions';
 import type { ChurchToolsRequestClient } from '../churchtools/request';
 

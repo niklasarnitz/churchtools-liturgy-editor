@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { Button, Card, EmptyState, Icon, ProgressBar } from './styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import EmptyState from '@churchtools/styleguide-components/basic/emptyState/EmptyState.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import ProgressBar from '@churchtools/styleguide-components/infos/ProgressBar.vue';
 import { computed } from 'vue';
 
-import type { HymnalDefinition } from '../data/hymnals';
-import type { HymnalImportState } from '../domain/imports';
+import type { HymnalDefinition } from '../data/hymnals/types';
+import type { HymnalImportState } from '../domain/imports/types';
 import type { ImportProgressView } from './types';
 
 const props = defineProps<{

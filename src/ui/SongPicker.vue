@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { Button, Card, Icon, Input, SelectDropdown, Textarea } from './styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Card from '@churchtools/styleguide-components/layout/card/Card.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import Input from '@churchtools/styleguide-components/form/input/Input.vue';
+import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
+import Textarea from '@churchtools/styleguide-components/form/textarea/Textarea.vue';
 import { computed, ref, useId, watch } from 'vue';
-import type { SongSlotValue } from '../domain/agenda-generation';
+import type { SongSlotValue } from '../domain/agenda-generation/types';
 import type { WorkspaceArrangement, WorkspaceSong } from './types';
 
 const props = defineProps<{

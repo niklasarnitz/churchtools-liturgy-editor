@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { generateNormalizedAgenda, type AgendaSlotValue } from '../agenda-generation';
+import { generateNormalizedAgenda } from '../agenda-generation/renderer';
+import type { AgendaSlotValue } from '../agenda-generation/types';
 import { testBadenLiturgy } from '../../test-fixtures/resources';
-import type { ServiceBlockNode } from '../../data/liturgies';
+import type { ServiceBlockNode } from '../../data/liturgies/types';
 import { captureBlock, instantiateNode, parseSavedBlocks } from './blocks';
 
 const song = { kind: 'song' as const, songId: 20, arrangementId: 30, title: 'Lied A' };

@@ -2,14 +2,25 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./styleguide', async () => {
+vi.mock('@churchtools/styleguide-components/form/button/Button.vue', async () => {
     const { h: render } = await import('vue');
-    return {
-        Button: (props: { label?: string }) => render('button', props.label),
-        Icon: () => render('span'),
-        Input: (props: { label?: string }) => render('label', props.label),
-        SelectDropdown: (props: { label?: string }) => render('label', props.label),
-    };
+    return { default: (props: { label?: string }) => render('button', props.label) };
+});
+vi.mock('@churchtools/styleguide-components/content/icon/Icon.vue', async () => {
+    const { h: render } = await import('vue');
+    return { default: () => render('span') };
+});
+vi.mock('@churchtools/styleguide-components/form/input/Input.vue', async () => {
+    const { h: render } = await import('vue');
+    return { default: (props: { label?: string }) => render('label', props.label) };
+});
+vi.mock('@churchtools/styleguide-components/form/select/SelectDropdown.vue', async () => {
+    const { h: render } = await import('vue');
+    return { default: (props: { label?: string }) => render('label', props.label) };
+});
+vi.mock('@churchtools/styleguide-components/form/textarea/Textarea.vue', async () => {
+    const { h: render } = await import('vue');
+    return { default: (props: { label?: string }) => render('label', props.label) };
 });
 vi.mock('./SongPicker.vue', async () => {
     const { h: render } = await import('vue');
@@ -17,7 +28,7 @@ vi.mock('./SongPicker.vue', async () => {
 });
 
 import { badenDurmersheimLiturgy } from '../data/liturgies/baden-durmersheim';
-import { organizationsById } from '../data/organizations';
+import { organizationsById } from '../data/organizations/catalog';
 import ServiceEditor from './ServiceEditor.vue';
 
 describe('ServiceEditor block actions', () => {

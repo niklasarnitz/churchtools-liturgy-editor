@@ -1,5 +1,5 @@
 import type { ResourceRegistry } from '../../data/registry';
-import type { LiturgyNode } from '../../data/liturgies';
+import type { LiturgyNode } from '../../data/liturgies/types';
 
 export class ResourceValidationError extends Error {
     public readonly errors: string[];

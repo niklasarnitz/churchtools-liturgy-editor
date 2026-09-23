@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { Button, Icon, Input, SelectDropdown } from './styleguide';
+import Button from '@churchtools/styleguide-components/form/button/Button.vue';
+import Icon from '@churchtools/styleguide-components/content/icon/Icon.vue';
+import Input from '@churchtools/styleguide-components/form/input/Input.vue';
+import SelectDropdown from '@churchtools/styleguide-components/form/select/SelectDropdown.vue';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
-import type { AgendaSlotValue, NormalizedAgenda, SermonSlotValue, SongSlotValue } from '../domain/agenda-generation';
-import { generateNormalizedAgenda } from '../domain/agenda-generation';
-import { formatScriptureReference } from '../domain/lectionary';
-import type { LiturgicalDayOverrides } from '../domain/lectionary';
-import type { LiturgyNode, LiturgyDefinition, LiturgyNodeType, ServiceBlockNode } from '../data/liturgies';
-import type { OrganizationDefinition } from '../data/organizations';
-import type { LiturgicalDay } from '../data/lectionaries';
-import type { LiturgicalSuggestion } from '../application';
-import type { NativeAgenda } from '../churchtools';
-import type { ManagedAgenda } from '../domain/managed-agendas';
+import type { AgendaSlotValue, NormalizedAgenda, SermonSlotValue, SongSlotValue } from '../domain/agenda-generation/types';
+import { generateNormalizedAgenda } from '../domain/agenda-generation/renderer';
+import { formatScriptureReference } from '../domain/lectionary/resolver';
+import type { LiturgicalDayOverrides } from '../domain/lectionary/resolver';
+import type { LiturgyNode, LiturgyDefinition, LiturgyNodeType, ServiceBlockNode } from '../data/liturgies/types';
+import type { OrganizationDefinition } from '../data/organizations/types';
+import type { LiturgicalDay } from '../data/lectionaries/types';
+import type { LiturgicalSuggestion } from '../application/types';
+import type { NativeAgenda } from '../churchtools/types';
+import type { ManagedAgenda } from '../domain/managed-agendas/types';
 import type { WorkspaceEvent, WorkspaceSong, AgendaDriftView } from './types';
 import ServiceEditorNodeFields from './ServiceEditorNodeFields.vue';
-import { openLiturgyPrintDialog } from '../domain/liturgy-document';
+import { openLiturgyPrintDialog } from '../domain/liturgy-document/document';
 import { captureBlock, instantiateNode, type SavedBlock } from '../domain/liturgies/blocks';
 
 type SlotField = { id: string; slot: string; label: string; kind: 'song' | 'reading' | 'sermon' | 'text'; required?: boolean };

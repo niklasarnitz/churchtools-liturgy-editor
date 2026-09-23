@@ -1,10 +1,6 @@
-import type { OrganizationDefinition } from '../../data/organizations';
-import type {
-    LectionaryDefinition,
-    LiturgicalDay,
-    ScriptureReference,
-} from '../../data/lectionaries';
-import type { LiturgyDefinition } from '../../data/liturgies';
+import type { OrganizationDefinition } from '../../data/organizations/types';
+import type { LectionaryDefinition, LiturgicalDay, ScriptureReference } from '../../data/lectionaries/types';
+import type { LiturgyDefinition } from '../../data/liturgies/types';
 
 export interface LiturgicalDayOverrides {
     name?: string;

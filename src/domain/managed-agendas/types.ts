@@ -1,7 +1,7 @@
 import type { NativeAgendaItemInput } from '../../churchtools/types';
-import type { LiturgyNode } from '../../data/liturgies';
-import type { LiturgicalDay } from '../../data/lectionaries';
-import type { AgendaSlotValue } from '../agenda-generation';
+import type { LiturgyNode } from '../../data/liturgies/types';
+import type { LiturgicalDay } from '../../data/lectionaries/types';
+import type { AgendaSlotValue } from '../agenda-generation/types';
 
 export type ManagedEditorSnapshot = {
     nodes: LiturgyNode[];

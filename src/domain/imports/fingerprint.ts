@@ -1,4 +1,4 @@
-import type { HymnalSong } from '../../data/hymnals';
+import type { HymnalSong } from '../../data/hymnals/types';
 import type { NativeSong } from '../../churchtools/types';
 
 export const stableJson = (value: unknown): string => {

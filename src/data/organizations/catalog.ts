@@ -1,6 +1,5 @@
 import type { OrganizationDefinition } from './types';
 
-export type { OrganizationDefinition } from './types';
 
 export const organizations = [
     {

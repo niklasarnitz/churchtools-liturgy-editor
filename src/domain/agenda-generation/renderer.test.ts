@@ -13,6 +13,22 @@ const songs: Record<string, SongSlotValue> = {
 };
 
 describe('normalized agenda generation', () => {
+    it('applies placement and visibility rules to any named service block', () => {
+        const block = { id: 'festival-block', type: 'serviceBlock' as const, blockKey: 'festival', label: 'Festteil', nodes: [
+            { id: 'festival-song', type: 'heading' as const, text: 'Festlied' },
+        ] };
+        const nodes = [
+            { id: 'opening', type: 'heading' as const, text: 'Beginn' },
+            { id: 'usual-prayer', type: 'heading' as const, text: 'Übliches Gebet', showWhen: { blockKey: 'festival', present: false } },
+            block,
+            { id: 'ending', type: 'heading' as const, text: 'Schluss' },
+        ];
+        const template = { ...testBadenLiturgy, nodes };
+        const withBlock = generateNormalizedAgenda({ template });
+        const withoutBlock = generateNormalizedAgenda({ template: { ...template, nodes: nodes.filter((node) => node !== block) } });
+        expect(withBlock.items.map((item) => item.nodeId)).toEqual(['opening', 'festival-song', 'ending']);
+        expect(withoutBlock.items.map((item) => item.nodeId)).toEqual(['opening', 'usual-prayer', 'ending']);
+    });
     it('renders deterministic native-compatible items and node mappings', () => {
         const template = testBadenLiturgy;
         const day = resolveLiturgicalDay({ date: '2026-09-20', organization: organizationsById.ekiba, lectionaries: [testLectionary] });
@@ -85,6 +101,23 @@ describe('normalized agenda generation', () => {
 
         expect(result.items.map((item) => item.nodeId)).not.toContain('optional-heading');
         expect(result.items.map((item) => item.nodeId)).toContain('closing-song');
+    });
+
+    it('shows arrangement and selected stanzas in the agenda note', () => {
+        const template = {
+            ...testBadenLiturgy,
+            nodes: [{ id: 'song', type: 'songSlot' as const, slot: 'openingSong', label: 'Eingangslied', required: true }],
+        };
+        const result = generateNormalizedAgenda({
+            template,
+            slots: {
+                openingSong: {
+                    kind: 'song', songId: 101, arrangementId: 1001,
+                    arrangementName: 'Strophen 1, 3 und 4', stanzas: [1, 3, 4],
+                },
+            },
+        });
+        expect(result.items[0]?.note).toBe('Arrangement: Strophen 1, 3 und 4');
     });
 
     it('fails conservatively when a required slot is absent', () => {

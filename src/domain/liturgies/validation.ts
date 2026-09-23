@@ -21,11 +21,15 @@ const addNodeErrors = (nodes: LiturgyNode[], path: string, errors: string[], see
         if (seen.has(node.id)) errors.push(`${path} contains duplicate node id "${node.id}"`);
         seen.add(node.id);
 
-        if (node.type === 'optionalSection' || node.type === 'communionSection') {
+        if (node.type === 'optionalSection' || node.type === 'communionSection' || node.type === 'serviceBlock') {
             addNodeErrors(node.nodes, `${nodePath}`, errors, seen);
         }
     }
 };
+
+const allNodes = (nodes: LiturgyNode[]): LiturgyNode[] => nodes.flatMap((node) =>
+    node.type === 'optionalSection' || node.type === 'communionSection' || node.type === 'serviceBlock'
+        ? [node, ...allNodes(node.nodes)] : [node]);
 
 export const validateResourceRegistry = (registry: ResourceRegistry): string[] => {
     const errors: string[] = [];
@@ -106,7 +110,23 @@ export const validateResourceRegistry = (registry: ResourceRegistry): string[] =
         if (liturgy.lectionaryId && !lectionaryIds.has(liturgy.lectionaryId)) {
             errors.push(`${path} references unknown lectionary "${liturgy.lectionaryId}"`);
         }
-        addNodeErrors(liturgy.nodes, path, errors);
+        const seenNodeIds = new Set<string>();
+        addNodeErrors(liturgy.nodes, path, errors, seenNodeIds);
+        if (liturgy.blocks) addNodeErrors(liturgy.blocks, `${path}.blocks`, errors, seenNodeIds);
+        const blockKeys = new Set<string>();
+        for (const [blockIndex, block] of (liturgy.blocks ?? []).entries()) {
+            if (!block.blockKey) errors.push(`${path}.blocks[${blockIndex}].blockKey is required`);
+            if (blockKeys.has(block.blockKey)) errors.push(`${path} contains duplicate block key "${block.blockKey}"`);
+            blockKeys.add(block.blockKey);
+            if (block.suggestedAfter && !liturgy.nodes.some((node) => node.id === block.suggestedAfter)) {
+                errors.push(`${path}.blocks[${blockIndex}] references unknown insertion point "${block.suggestedAfter}"`);
+            }
+        }
+        for (const node of [...allNodes(liturgy.nodes), ...allNodes(liturgy.blocks ?? [])]) {
+            if (node.showWhen && !blockKeys.has(node.showWhen.blockKey)) {
+                errors.push(`${path} node "${node.id}" references unknown block "${node.showWhen.blockKey}"`);
+            }
+        }
     }
 
     for (const organization of registry.organizations) {

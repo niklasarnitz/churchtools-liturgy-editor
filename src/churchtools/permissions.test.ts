@@ -41,4 +41,24 @@ describe('ChurchToolsPermissionsAdapter', () => {
         await expect(permissions.assertSongRead()).resolves.toBeUndefined();
         expect(requests).toBe(2);
     });
+
+    it('uses ChurchTools master-data permission for global settings changes', async () => {
+        const client = {
+            get: (async () => ({ churchservice: { 'edit masterdata': true } })) as ChurchToolsRequestClient['get'],
+        } as ChurchToolsRequestClient;
+        const permissions = new ChurchToolsPermissionsAdapter(client);
+
+        await expect(permissions.canManageSettings()).resolves.toBe(true);
+        await expect(permissions.assertSettingsWrite()).resolves.toBeUndefined();
+    });
+
+    it('denies global settings changes when master-data permission is missing', async () => {
+        const client = {
+            get: (async () => ({ churchservice: { view: true } })) as ChurchToolsRequestClient['get'],
+        } as ChurchToolsRequestClient;
+        const permissions = new ChurchToolsPermissionsAdapter(client);
+
+        await expect(permissions.canManageSettings()).resolves.toBe(false);
+        await expect(permissions.assertSettingsWrite()).rejects.toMatchObject({ kind: 'forbidden', status: 403 });
+    });
 });

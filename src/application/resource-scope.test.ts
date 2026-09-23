@@ -37,6 +37,6 @@ describe('scopeResourceRegistry', () => {
         expect(scoped.organizations).not.toBe(resourceRegistry.organizations);
         expect(scoped.liturgies).not.toBe(resourceRegistry.liturgies);
         expect(resourceRegistry.organizations).toHaveLength(5);
-        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-durmersheim']);
+        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toContain('lcms-divine-service-1');
     });
 });

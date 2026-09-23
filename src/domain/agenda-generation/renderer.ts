@@ -41,9 +41,10 @@ const isSermonValue = (value: AgendaSlotValue | undefined): value is SermonSlotV
 const isScriptureReference = (value: AgendaSlotValue | undefined): value is ScriptureReference =>
     typeof value === 'object' && value !== null && 'reference' in value && typeof value.reference === 'string';
 
-const scriptureForSlot = (slot: ReadingSlotNode['slot'], day?: LiturgicalDay): string | undefined => {
+const scriptureForSlot = (slot: string, day?: LiturgicalDay): string | undefined => {
     if (!day) return undefined;
     if (slot === 'psalm') return day.weeklyPsalm;
+    if (slot !== 'oldTestament' && slot !== 'epistle' && slot !== 'gospel' && slot !== 'sermon') return undefined;
     const reference = day.readings[slot];
     return reference?.reference;
 };
@@ -54,6 +55,7 @@ export const generateNormalizedAgenda = (input: AgendaGenerationInput): Normaliz
     const slots = input.slots ?? {};
     const missingSlots: string[] = [];
     const items: NormalizedAgendaItem[] = [];
+    const activeBlocks = new Set(input.template.nodes.filter((node) => node.type === 'serviceBlock').map((node) => node.blockKey));
 
     const addText = (nodeId: string, title: string, note?: string, responsible?: string) => {
         items.push({
@@ -72,12 +74,19 @@ export const generateNormalizedAgenda = (input: AgendaGenerationInput): Normaliz
             if (node.required) missingSlots.push(node.slot);
             return;
         }
+        const songNotes = [
+            value.comment?.trim(),
+            value.arrangementName?.trim() ? `Arrangement: ${value.arrangementName.trim()}` : undefined,
+            value.stanzas?.length && !/^Strophen\s/i.test(value.arrangementName?.trim() ?? '')
+                ? `Strophen ${value.stanzas.join(', ')}`
+                : undefined,
+        ].filter((part): part is string => Boolean(part));
         items.push({
             nodeId: node.id,
             position: items.length,
             type: 'song',
             title: titleFor(node.label, value.title ?? 'Lied'),
-            ...(value.comment?.trim() ? { note: value.comment.trim() } : {}),
+            ...(songNotes.length ? { note: [...new Set(songNotes)].join(' · ') } : {}),
             ...(node.responsible?.trim() ? { responsible: node.responsible.trim() } : {}),
             songId: value.songId,
             arrangementId: value.arrangementId,
@@ -87,7 +96,7 @@ export const generateNormalizedAgenda = (input: AgendaGenerationInput): Normaliz
     const renderReading = (node: ReadingSlotNode) => {
         const value = slots[node.slot];
         const reference = isScriptureReference(value) ? value.reference : typeof value === 'string' ? value : undefined;
-        const resolved = reference ?? scriptureForSlot(node.slot, input.liturgicalDay);
+        const resolved = reference ?? scriptureForSlot(node.lectionarySlot ?? node.slot, input.liturgicalDay);
         if (!resolved) {
             if (node.required) missingSlots.push(node.slot);
             return;
@@ -122,6 +131,7 @@ export const generateNormalizedAgenda = (input: AgendaGenerationInput): Normaliz
     };
 
     const renderNode = (node: LiturgyNode): void => {
+        if (node.showWhen && activeBlocks.has(node.showWhen.blockKey) !== node.showWhen.present) return;
         switch (node.type) {
             case 'heading':
                 addHeading(node);
@@ -155,6 +165,9 @@ export const generateNormalizedAgenda = (input: AgendaGenerationInput): Normaliz
                 return;
             case 'communionSection':
                 renderCommunionSection(node);
+                return;
+            case 'serviceBlock':
+                node.nodes.forEach(renderNode);
                 return;
         }
     };

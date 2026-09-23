@@ -43,19 +43,23 @@ const activeNodes = (
     nodes: LiturgyNode[],
     optionalSections: Readonly<Record<string, boolean>>,
     result: LiturgyNode[] = [],
+    activeBlocks = new Set(nodes.filter((node) => node.type === 'serviceBlock').map((node) => node.blockKey)),
 ): LiturgyNode[] => {
     nodes.forEach((node) => {
+        if (node.showWhen && activeBlocks.has(node.showWhen.blockKey) !== node.showWhen.present) return;
         if (node.type === 'optionalSection') {
-            if (optionalSections[node.sectionKey]) activeNodes(node.nodes, optionalSections, result);
+            if (optionalSections[node.sectionKey]) activeNodes(node.nodes, optionalSections, result, activeBlocks);
             return;
         }
         result.push(node);
-        if (node.type === 'communionSection') activeNodes(node.nodes, optionalSections, result);
+        if (node.type === 'communionSection' || node.type === 'serviceBlock') activeNodes(node.nodes, optionalSections, result, activeBlocks);
     });
     return result;
 };
 
 const selectedForm = (input: LiturgyDocumentInput): string => {
+    const blocks = input.template.nodes.filter((node) => node.type === 'serviceBlock');
+    if (blocks.length) return blocks.map((node) => node.label ?? node.blockKey).join(' und ');
     const section = input.template.nodes.find((node) =>
         node.type === 'optionalSection' && input.optionalSections[node.sectionKey]
     );

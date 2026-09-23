@@ -28,7 +28,12 @@ describe('static resource registry', () => {
             'elkg2',
             'lutheran-service-book',
         ]);
-        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toEqual(['baden-durmersheim']);
+        expect(resourceRegistry.liturgies.map((liturgy) => liturgy.id)).toEqual([
+            'baden-durmersheim', 'selk-order-1', 'selk-order-1-communion', 'selk-order-2',
+            'lcms-divine-service-1', 'lcms-divine-service-2', 'lcms-divine-service-3',
+            'lcms-divine-service-4', 'lcms-divine-service-5',
+            'selk-free-order', 'lcms-free-order',
+        ]);
         expect(resourceRegistry.lectionaries).toEqual([]);
     });
 

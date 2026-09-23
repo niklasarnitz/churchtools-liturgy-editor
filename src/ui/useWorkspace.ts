@@ -1,7 +1,8 @@
 import { computed, reactive, ref } from 'vue';
+import type { GetWhoamiResponse } from '@churchtools/api-types';
 import type { QueryClient } from '@tanstack/vue-query';
 
-import { ChurchToolsAgendasAdapter, ChurchToolsClientAdapter, ChurchToolsCustomModuleStore, ChurchToolsEventsAdapter, ChurchToolsPermissionsAdapter, ChurchToolsSongsAdapter } from '../churchtools';
+import { ChurchToolsAgendasAdapter, ChurchToolsClientAdapter, ChurchToolsCustomModuleStore, ChurchToolsEventsAdapter, ChurchToolsPermissionsAdapter, ChurchToolsSongsAdapter, type NativeAgenda } from '../churchtools';
 import { userFacingChurchToolsMessage } from '../churchtools/errors';
 import { FetchLectionarySource, LiturgyEditorApplication, type InstallationSettings } from '../application';
 import { scopeResourceRegistry } from '../application/resource-scope';
@@ -13,6 +14,7 @@ import type { OrganizationDefinition } from '../data/organizations';
 import { resourceRegistry } from '../data/registry';
 import type { LiturgyDefinition } from '../data/liturgies';
 import type { ManagedAgenda } from '../domain/managed-agendas';
+import type { SavedBlock } from '../domain/liturgies/blocks';
 import type { WorkspaceEvent, WorkspaceSong, WorkspaceStatus, ImportProgressView, AgendaDriftView } from './types';
 import { createWorkspaceQueryClient, executeMutation } from './query';
 
@@ -26,6 +28,7 @@ type WorkspaceOptions = {
     notify?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
     queryClient?: QueryClient;
     state?: JsonStore;
+    permissions?: ChurchToolsPermissionsAdapter;
 };
 
 const lectionaryApiUrl = import.meta.env.VITE_LECTIONAR_API_URL as string | undefined;
@@ -37,9 +40,10 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const eventsApi = new ChurchToolsEventsAdapter(client);
     const songsApi = new ChurchToolsSongsAdapter(client);
     const agendasApi = new ChurchToolsAgendasAdapter(client);
-    const permissionsApi = new ChurchToolsPermissionsAdapter(client);
+    const permissionsApi = options.permissions ?? new ChurchToolsPermissionsAdapter(client);
     const persistentStore = options.state ?? new ChurchToolsCustomModuleStore(client, extensionKey);
     const lectionarySource = lectionaryApiUrl?.trim() ? new FetchLectionarySource(lectionaryApiUrl) : undefined;
+    const lectionaryConfigured = Boolean(lectionarySource);
     const application = new LiturgyEditorApplication({ events: eventsApi, agendas: agendasApi, songs: songsApi, permissions: permissionsApi, state: persistentStore, resources: resourceRegistry, lectionary: lectionarySource ? { source: lectionarySource } : undefined, importOptions: { concurrency: 3 } });
 
     const events = ref<WorkspaceEvent[]>([]);
@@ -49,8 +53,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const eventStatus = ref<WorkspaceStatus>('idle');
     const songStatus = ref<WorkspaceStatus>('idle');
     const error = ref<string | undefined>();
-    const isOnline = ref(Boolean(options.baseUrl));
+    const isOnline = ref(false);
     const apiConfigured = ref(Boolean(options.baseUrl));
+    const currentUserId = ref<number>();
+    const canManageSettings = ref(false);
+    const canWriteAgenda = ref(false);
     const importProgress = ref<ImportProgressView | undefined>();
     const importState = ref<HymnalImportState | undefined>();
     const operationBusy = ref(false);
@@ -58,8 +65,27 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const settingsStatus = ref<WorkspaceStatus>('idle');
     let eventLoadToken = 0;
     let eventInspectionToken = 0;
-    let eventPageFrom = new Date().toISOString().slice(0, 10);
+    const today = new Date();
+    const eventFrom = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+    let eventPageFrom = eventFrom.value;
     const notify = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => options.notify?.(message, type);
+
+    const loadCapabilities = async (): Promise<void> => {
+        try {
+            const person = await client.get<GetWhoamiResponse['data']>('/whoami', { only_allow_authenticated: true });
+            currentUserId.value = Number.isSafeInteger(person.id) && person.id > 0 ? person.id : undefined;
+            const [settings, agenda] = await Promise.all([
+                permissionsApi.can('churchservice', 'edit masterdata'),
+                permissionsApi.can('churchservice', 'edit agenda'),
+            ]);
+            canManageSettings.value = settings;
+            canWriteAgenda.value = agenda;
+        } catch {
+            currentUserId.value = undefined;
+            canManageSettings.value = false;
+            canWriteAgenda.value = false;
+        }
+    };
 
     const loadSettings = async (): Promise<InstallationSettings> => {
         settingsStatus.value = 'loading';
@@ -122,10 +148,16 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const organizations = computed<OrganizationDefinition[]>(() =>
         scopedResources.value ? scopedResources.value.organizations : resourceRegistry.organizations
     );
+    const canEditEvent = async (event: WorkspaceEvent): Promise<boolean> => {
+        const calendarId = Number(event.calendar?.domainIdentifier);
+        if (!Number.isSafeInteger(calendarId) || calendarId <= 0) return false;
+        try { return await permissionsApi.can('churchservice', 'edit agenda', calendarId); }
+        catch { return false; }
+    };
 
     const loadEvents = async (page = eventPage.value): Promise<void> => {
         const loadToken = ++eventLoadToken;
-        if (page === 1) eventPageFrom = new Date().toISOString().slice(0, 10);
+        if (page === 1) eventPageFrom = eventFrom.value;
         eventStatus.value = 'loading'; error.value = undefined;
         try {
             const loaded = await queryClient.fetchQuery({
@@ -154,6 +186,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             isOnline.value = true; eventStatus.value = 'ready';
             const inspectionToken = ++eventInspectionToken;
             for (const event of nextEvents) {
+                void canEditEvent(event).then((allowed) => {
+                    if (inspectionToken !== eventInspectionToken) return;
+                    const current = events.value.find((candidate) => candidate.id === event.id);
+                    if (current) current.canEditAgenda = allowed;
+                });
                 void application.inspectEvent(event).then((inspected) => {
                     if (inspectionToken !== eventInspectionToken) return;
                     const current = events.value.find((candidate) => candidate.id === event.id);
@@ -172,6 +209,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
 
     const loadPreviousEvents = (): Promise<void> => loadEvents(Math.max(1, eventPage.value - 1));
     const loadNextEvents = (): Promise<void> => loadEvents(eventPage.value + 1);
+    const setEventFrom = async (value: string): Promise<void> => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+        eventFrom.value = value;
+        await loadEvents(1);
+    };
 
     const loadSongs = async (): Promise<void> => {
         if (songStatus.value === 'loading') return;
@@ -196,6 +238,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                 }))
                 .filter((song) => Boolean(song.id && song.name)) as WorkspaceSong[];
             songStatus.value = 'ready';
+            isOnline.value = true;
         } catch (cause) { songs.value = []; songStatus.value = 'error'; error.value = userFacingChurchToolsMessage(cause); }
     };
 
@@ -291,6 +334,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                 queryKey: ['songs', query.trim(), 50],
                 queryFn: () => application.searchSongs(query, { limit: 50 }),
             });
+            isOnline.value = true;
             return results
                 .map((result) => ({
                     id: result.song.id,
@@ -302,10 +346,21 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
                     number: result.number,
                 }))
                 .filter((song) => Boolean(song.id && song.name)) as WorkspaceSong[];
-        } catch (cause) { error.value = userFacingChurchToolsMessage(cause); return []; }
+        } catch (cause) { error.value = userFacingChurchToolsMessage(cause); throw cause; }
     };
 
-    const saveAgenda = async (event: WorkspaceEvent, template: LiturgyDefinition, slots: Readonly<Record<string, AgendaSlotValue | undefined>>, options: { series?: string; force?: boolean; optionalSections?: Readonly<Record<string, boolean>>; liturgicalDay?: import('../data/lectionaries').LiturgicalDay; nodes?: LiturgyDefinition['nodes'] } = {}): Promise<ManagedAgenda> => {
+    const createArrangement = async (songId: number, input: { name: string; description?: string }): Promise<{ id: number; name?: string; isDefault?: boolean }> => {
+        const created = await application.createSongArrangement(songId, input);
+        await queryClient.invalidateQueries({ queryKey: ['songs'] });
+        songs.value = songs.value.map((song) => song.id === songId ? { ...song, arrangements: [...(song.arrangements ?? []), created] } : song);
+        return created;
+    };
+
+    const loadSavedBlocks = (organizationId: string, userId: number): Promise<SavedBlock[]> => application.getPersonalBlocks(organizationId, userId);
+    const saveSavedBlocks = (event: WorkspaceEvent, organizationId: string, userId: number, blocks: SavedBlock[]): Promise<void> =>
+        application.savePersonalBlocks(event.id, organizationId, userId, blocks);
+
+    const saveAgenda = async (event: WorkspaceEvent, template: LiturgyDefinition, slots: Readonly<Record<string, AgendaSlotValue | undefined>>, options: { series?: string; force?: boolean; expectedNativeFingerprint?: string | null; optionalSections?: Readonly<Record<string, boolean>>; liturgicalDay?: import('../data/lectionaries').LiturgicalDay; nodes?: LiturgyDefinition['nodes']; variantKey?: string; selectedDate?: string } = {}): Promise<ManagedAgenda> => {
         if (!installationSettings.value.organizationId) {
             const message = 'Für diese ChurchTools-Installation ist kein Kirchenkörper festgelegt. Bitte wende dich an einen Administrator.';
             error.value = message;
@@ -318,24 +373,88 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
             notify(message, 'error');
             throw new Error(message);
         }
-        const result = await application.saveAgenda({
-            eventId: event.id,
-            organizationId: template.organizationId,
-            liturgyId: template.id,
-            nodes: options.nodes,
-            slots,
-            optionalSections: options.optionalSections,
-            liturgicalDay: options.liturgicalDay,
-            series: options.series,
-            force: options.force,
-        });
-        return result.managedAgenda;
+        try {
+            const result = await application.saveAgenda({
+                eventId: event.id,
+                organizationId: template.organizationId,
+                liturgyId: template.id,
+                nodes: options.nodes,
+                slots,
+                optionalSections: options.optionalSections,
+                liturgicalDay: options.liturgicalDay,
+                series: options.series,
+                force: options.force,
+                expectedNativeFingerprint: options.expectedNativeFingerprint,
+                variantKey: options.variantKey,
+                selectedDate: options.selectedDate,
+            });
+            return result.managedAgenda;
+        } catch (cause) {
+            // A native change can happen while the editor is open. Surface the
+            // latest conflict in the same decision dialog used on initial load.
+            if (!options.force && cause instanceof Error) {
+                try {
+                    const inspected = await application.inspectEvent(event.id);
+                    if (inspected.status === 'externally-changed' && inspected.managedAgenda) {
+                        Object.assign(cause, { drift: { event, agenda: inspected.agenda, managed: inspected.managedAgenda, reasons: inspected.reconciliation?.reasons } satisfies AgendaDriftView });
+                    }
+                } catch { /* Keep the original save error when inspection is unavailable. */ }
+            }
+            throw cause;
+        }
+    };
+
+    const loadEditorState = async (event: WorkspaceEvent): Promise<{
+        templateId: string;
+        nodes: LiturgyDefinition['nodes'];
+        slots: Record<string, AgendaSlotValue | undefined>;
+        series?: string;
+        variantKey?: string;
+        selectedDate?: string;
+        liturgicalDay?: import('../data/lectionaries').LiturgicalDay;
+        nativeAgenda?: NativeAgenda;
+        managed?: ManagedAgenda;
+        snapshotAvailable: boolean;
+    } | undefined> => {
+        const inspected = await application.inspectEvent(event.id);
+        if (!inspected.agenda) return undefined;
+        const managed = inspected.managedAgenda;
+        const templateId = managed?.templateId ?? availableLiturgies.value[0]?.id;
+        const template = availableLiturgies.value.find((item) => item.id === templateId);
+        if (!template || !templateId) throw new Error('Die Vorlage dieses Ablaufs ist für den gewählten Kirchenkörper nicht verfügbar.');
+        const mappedNodeIds = new Set(Object.keys(managed?.nodeMappings ?? {}).filter((id) => id !== '__liturgy-editor-management-hint'));
+        const flattenNodeIds = (nodes: LiturgyDefinition['nodes']): string[] => nodes.flatMap((node) =>
+            node.type === 'optionalSection' || node.type === 'communionSection' ? flattenNodeIds(node.nodes) : [node.id]);
+        const inferredVariant = !managed?.editorSnapshot && mappedNodeIds.size
+            ? template.nodes.filter((node) => node.type === 'optionalSection').find((section) => {
+                const ids = new Set(flattenNodeIds(section.nodes));
+                return [...mappedNodeIds].every((id) => ids.has(id));
+            })
+            : undefined;
+        return {
+            templateId,
+            nodes: managed?.editorSnapshot?.nodes ?? structuredClone(template.nodes),
+            slots: managed?.editorSnapshot?.slots ?? {},
+            series: managed?.editorSnapshot?.series ?? inspected.agenda.series ?? undefined,
+            variantKey: managed?.editorSnapshot?.variantKey ?? inferredVariant?.sectionKey,
+            selectedDate: managed?.editorSnapshot?.selectedDate,
+            liturgicalDay: managed?.editorSnapshot?.liturgicalDay,
+            nativeAgenda: inspected.agenda,
+            managed,
+            snapshotAvailable: managed?.editorSnapshot !== undefined,
+        };
     };
 
     const inspectAgenda = async (event: WorkspaceEvent): Promise<AgendaDriftView | undefined> => {
         const inspected = await application.inspectEvent(event.id);
         if (inspected.status !== 'externally-changed' || !inspected.managedAgenda) return undefined;
         return { event, agenda: inspected.agenda, managed: inspected.managedAgenda, reasons: inspected.reconciliation?.reasons };
+    };
+
+    const inspectReadOnlyAgenda = async (event: WorkspaceEvent): Promise<NativeAgenda | undefined> => {
+        const inspected = await application.inspectEvent(event.id);
+        if (inspected.status === 'unavailable') throw new Error('Der ChurchTools-Ablauf ist mit deinen Berechtigungen nicht verfügbar.');
+        return inspected.agenda;
     };
 
     const suggestLiturgicalDay = (input: Parameters<LiturgyEditorApplication['suggestLiturgicalDay']>[0]) => application.suggestLiturgicalDay(input);
@@ -355,5 +474,5 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         }
     };
 
-    return reactive({ events, eventPage, eventHasNextPage, songs, eventStatus, songStatus, error, isOnline, apiConfigured, importProgress, importState, operationBusy, installationSettings, settingsStatus, selectedOrganization, organizations, availableLiturgies, availableHymnals, availableLectionaries, loadEvents, loadPreviousEvents, loadNextEvents, loadSongs, loadSettings, saveInstallationOrganization, loadImport, importHymnal, previewUninstall, uninstallHymnal, searchSongs, saveAgenda, inspectAgenda, suggestLiturgicalDay, keepAgenda, notify });
+    return reactive({ events, eventPage, eventHasNextPage, eventFrom, songs, eventStatus, songStatus, error, isOnline, apiConfigured, lectionaryConfigured, currentUserId, canManageSettings, canWriteAgenda, importProgress, importState, operationBusy, installationSettings, settingsStatus, selectedOrganization, organizations, availableLiturgies, availableHymnals, availableLectionaries, canEditEvent, loadEvents, loadPreviousEvents, loadNextEvents, setEventFrom, loadSongs, loadCapabilities, loadSettings, saveInstallationOrganization, loadImport, importHymnal, previewUninstall, uninstallHymnal, searchSongs, createArrangement, loadSavedBlocks, saveSavedBlocks, saveAgenda, loadEditorState, inspectAgenda, inspectReadOnlyAgenda, suggestLiturgicalDay, keepAgenda, notify });
 };

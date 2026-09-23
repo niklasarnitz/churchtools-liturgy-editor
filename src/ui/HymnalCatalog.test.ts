@@ -48,6 +48,7 @@ describe('HymnalCatalog interrupted imports', () => {
                 hymnals: [hymnal],
                 installed: () => interruptedImport,
                 busy: false,
+                canManage: true,
             }),
         });
         app.directive('rich-tooltip', {});
@@ -65,6 +66,7 @@ describe('HymnalCatalog interrupted imports', () => {
                 hymnals: [hymnal],
                 installed: () => interruptedImport,
                 busy: true,
+                canManage: true,
                 progress: {
                     operation: 'install',
                     hymnalId: hymnal.id,
@@ -83,5 +85,22 @@ describe('HymnalCatalog interrupted imports', () => {
         expect(html).toContain('Import läuft');
         expect(html).not.toContain('Import fortsetzen');
         expect(html).not.toContain('Import unterbrochen');
+    });
+
+    it('hides import actions in read-only mode', async () => {
+        const app = createSSRApp({
+            render: () => h(HymnalCatalog, {
+                hymnals: [hymnal],
+                installed: () => interruptedImport,
+                busy: false,
+                canManage: false,
+            }),
+        });
+        app.directive('rich-tooltip', {});
+
+        const html = await renderToString(app);
+
+        expect(html).toContain('Import unterbrochen');
+        expect(html).not.toContain('Import fortsetzen');
     });
 });

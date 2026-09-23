@@ -68,6 +68,15 @@ export class ChurchToolsPermissionsAdapter {
         await this.assert('churchservice', 'edit masterdata');
     }
 
+    /** Global installation settings and song catalog changes are managed through ChurchTools master data. */
+    async canManageSettings(): Promise<boolean> {
+        return this.can('churchservice', 'edit masterdata');
+    }
+
+    async assertSettingsWrite(): Promise<void> {
+        await this.assert('churchservice', 'edit masterdata');
+    }
+
     async assertAgendaRead(calendarId?: number): Promise<void> {
         await this.assert('churchservice', 'view agenda', calendarId);
     }

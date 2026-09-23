@@ -7,7 +7,7 @@ describe('serviceStatusLabels', () => {
         expect(serviceStatusLabels).toEqual({
             loading: 'Ablauf wird geprüft …',
             'no-agenda': 'Noch kein Ablauf',
-            managed: 'Liturgie vorbereitet',
+            managed: 'Vorhandener ChurchTools-Ablauf',
             complete: 'Vollständig',
             'externally-changed': 'Außerhalb der Extension verändert',
             unavailable: 'Nicht verfügbar',

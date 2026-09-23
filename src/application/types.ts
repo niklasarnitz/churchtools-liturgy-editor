@@ -40,7 +40,11 @@ export type SaveAgendaInput = {
     optionalSections?: Readonly<Record<string, boolean>>;
     liturgicalDay?: LiturgicalDay;
     series?: string;
+    variantKey?: string;
+    selectedDate?: string;
     force?: boolean;
+    /** Native agenda fingerprint shown when the user explicitly approved replacement. */
+    expectedNativeFingerprint?: string | null;
 };
 export type SaveAgendaResult = { managedAgenda: ManagedAgenda; agenda: NativeAgenda; generatedItemCount: number; reconciliation?: AgendaReconciliation };
 

@@ -17,6 +17,17 @@ describe('SettingsView configuration', () => {
         }
     });
 
+    it('offers SELK a neutral order and LCMS the five LSB outlines', () => {
+        const selk = resourceRegistry.organizations.find((org) => org.id === 'selk')!;
+        const lcms = resourceRegistry.organizations.find((org) => org.id === 'lcms')!;
+        expect(selk.liturgyIds).toEqual(['selk-order-1', 'selk-order-1-communion', 'selk-order-2', 'selk-free-order']);
+        expect(lcms.liturgyIds).toEqual([
+            'lcms-divine-service-1', 'lcms-divine-service-2', 'lcms-divine-service-3',
+            'lcms-divine-service-4', 'lcms-divine-service-5', 'lcms-free-order',
+        ]);
+        expect(SUPPORTED_ORGANIZATIONS.find((org) => org.id === 'lcms')?.description).toContain('fünf Divine-Service-Settings');
+    });
+
     it('each supported organization provides its associated hymnal with accurate song counts', () => {
         // LCMS -> Lutheran Service Book (LSB)
         const lcmsScope = scopeResourceRegistry(resourceRegistry, 'lcms');

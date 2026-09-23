@@ -106,9 +106,29 @@ Alle mitgelieferten Daten liegen versioniert unter `src/data/`:
 - `liturgies/`: deklarative DSL mit stabilen Node-IDs. Unterstützt
   `heading`, `fixedText`, `rubric`, `songSlot`, `readingSlot`, `sermonSlot`,
   `creed`, `prayer`, `optionalSection`, `freeTextSlot` und
-  `communionSection`. Mitgeliefert wird die „Badische Liturgie (Durmersheim)“
-  mit den exklusiven Formen Taufe und Abendmahl sowie einem druckoptimierten
+  `communionSection` und `serviceBlock`. Vorlagen können benannte Bausteine
+  mit empfohlenem Einfügepunkt anbieten. `showWhen` blendet Ablaufpunkte
+  abhängig von einem vorhandenen Baustein ein oder aus. Mitgeliefert wird die
+  „Badische Liturgie (Durmersheim)“ mit unabhängig einfügbaren Bausteinen für
+  Taufe und Abendmahl sowie einem druckoptimierten
   A4-Querformat-Export im Durmersheimer Ablaufzettel-Stil.
+
+Im Gottesdienst-Editor lassen sich Bausteine und ihre inneren Ablaufpunkte für
+einen einzelnen Gottesdienst bearbeiten, umsortieren, ergänzen, entfernen und
+duplizieren. Kopien erhalten eigene Node- und Slot-IDs, sodass ihre Inhalte
+unabhängig bleiben. Ein eigener oder angepasster Baustein kann zusätzlich in
+der persönlichen Bibliothek gespeichert werden. Sie liegt im ChurchTools-
+Extension-State, getrennt nach Nutzer und Kirchenkörper; das Speichern setzt
+Bearbeitungsrechte für den geöffneten Ablauf voraus.
+  Für LCMS gibt es Ablaufvorlagen zu den fünf Divine-Service-Settings des
+  Lutheran Service Book sowie einen frei gestaltbaren Ablauf. Die Vorlagen
+  enthalten nur die Struktur und keine geschützten liturgischen Volltexte;
+  maßgeblich bleibt das LSB (`docs/research/lcms-liturgy-presets.md`). Für SELK gibt es Strukturvorlagen nach ELKG²
+  Ordnung 1 und 2 als Predigtgottesdienst sowie Ordnung 1 mit einem
+  Abendmahlsbaustein. Die Vorlagen enthalten keine vollständigen Texte aus
+  Agende oder Gesangbuch; die SELK-Quellen und Grenzen sind unter
+  `docs/research/selk-liturgies.md` dokumentiert. Der frei gestaltbare Ablauf
+  bleibt verfügbar.
 - `lectionaries/`: Datentypen für Kirchenjahr-Vorschläge. Die Runtime enthält
   keine lokalen Tagesdaten; Vorschläge werden aus der Lektionar-API geladen.
 - `registry.ts`: gemeinsame Registry für Validierung und Domain-Tests.
@@ -270,7 +290,11 @@ Für eine echte MVP-Abnahme fehlen zusätzlich Live-Gates:
 - nativer Agenda-Create/Update, Reopen, externe Änderung und Konfliktdialog;
 - `lectionar`-Deployment, CORS/Auth und Antwortvertrag von `/api/church-year`;
 - visuelle Prüfung der lokalen Styleguide-Komponenten auf Desktop und Mobile;
-- Packaging-/Upload-Smoke-Test mit `npm run deploy`.
+- Upload-Smoke-Test des mit `npm run deploy` erstellten Pakets.
+
+Am 23.09.2026 wurden der lokale Produktionsbuild, 88 Vitest-Tests und das
+frisch erzeugte ZIP-Paket geprüft (`unzip -tq` erfolgreich). Diese lokalen
+Prüfungen ersetzen den ChurchTools-Host-Test nicht.
 
 ## Nicht-Ziele der ersten Version
 

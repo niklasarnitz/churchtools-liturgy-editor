@@ -9,6 +9,7 @@ export type LiturgyNodeType =
     | 'prayer'
     | 'optionalSection'
     | 'freeTextSlot'
+    | 'serviceBlock'
     | 'communionSection';
 
 export interface LiturgyNodePrintOptions {
@@ -28,6 +29,8 @@ export interface LiturgyNodeBase {
     /** Native ChurchTools responsible text, usually a service placeholder such as `[Predigt]`. */
     responsible?: string;
     print?: LiturgyNodePrintOptions;
+    /** Template rule evaluated from the blocks currently placed in the order. */
+    showWhen?: { blockKey: string; present: boolean };
 }
 
 export interface HeadingNode extends LiturgyNodeBase {
@@ -55,13 +58,15 @@ export type ReadingSlotKey = 'oldTestament' | 'psalm' | 'epistle' | 'gospel' | '
 
 export interface ReadingSlotNode extends LiturgyNodeBase {
     type: 'readingSlot';
-    slot: ReadingSlotKey;
+    slot: string;
+    /** Keeps the lectionary source when an instance has its own slot ID. */
+    lectionarySlot?: ReadingSlotKey;
     required?: boolean;
 }
 
 export interface SermonSlotNode extends LiturgyNodeBase {
     type: 'sermonSlot';
-    slot?: 'sermon';
+    slot?: string;
     required?: boolean;
 }
 
@@ -92,6 +97,14 @@ export interface CommunionSectionNode extends LiturgyNodeBase {
     nodes: LiturgyNode[];
 }
 
+export interface ServiceBlockNode extends LiturgyNodeBase {
+    type: 'serviceBlock';
+    blockKey: string;
+    /** A suggested insertion point; users can still move the block freely. */
+    suggestedAfter?: string;
+    nodes: LiturgyNode[];
+}
+
 export type LiturgyNode =
     | HeadingNode
     | FixedTextNode
@@ -103,6 +116,7 @@ export type LiturgyNode =
     | PrayerNode
     | OptionalSectionNode
     | FreeTextSlotNode
+    | ServiceBlockNode
     | CommunionSectionNode;
 
 export interface LiturgyDefinition {
@@ -122,4 +136,6 @@ export interface LiturgyDefinition {
         participantNotice?: string;
     };
     nodes: LiturgyNode[];
+    /** Ready-made blocks that users can place in the order independently. */
+    blocks?: ServiceBlockNode[];
 }

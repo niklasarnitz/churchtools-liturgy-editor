@@ -11,6 +11,7 @@ const props = defineProps<{
     installed: (hymnalId: string) => HymnalImportState | undefined;
     progress?: ImportProgressView;
     busy?: boolean;
+    canManage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -90,7 +91,7 @@ const badgeClass = (hymnal: HymnalDefinition) => {
                             <p v-if="current.failed && current.operation === 'install'" class="mt-2 text-xs text-red-700">{{ current.failed }} Einträge konnten nicht importiert werden.</p>
                             <p v-else-if="current.failed" class="mt-2 text-xs text-amber-700">{{ current.failed }} Einträge bleiben geschützt oder konnten nicht gelöscht werden.</p>
                         </div>
-                        <div class="mt-5 flex justify-end gap-2">
+                        <div v-if="props.canManage" class="mt-5 flex justify-end gap-2">
                             <template v-if="!isImportActive(hymnal)">
                                 <Button v-if="!props.installed(hymnal.id) || props.installed(hymnal.id)?.status === 'failed'" label="Installieren" icon="fas fa-download" :loading="busy" @click="emit('install', hymnal)" />
                                 <Button v-else-if="props.installed(hymnal.id)?.status === 'pending' || props.installed(hymnal.id)?.status === 'running'" label="Import fortsetzen" icon="fas fa-rotate-right" :loading="busy" :outlined="true" @click="emit('retry', hymnal)" />

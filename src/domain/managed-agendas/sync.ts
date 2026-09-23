@@ -30,9 +30,12 @@ export class ManagedAgendaSynchronizer {
         eventId: number,
         current: ManagedAgenda,
         generated: readonly GeneratedAgendaItem[],
-        options: { force?: boolean; now?: () => string } = {},
+        options: { force?: boolean; expectedNativeFingerprint?: string | null; now?: () => string } = {},
     ): Promise<ManagedAgenda> {
         const existing = await this.agendas.get(eventId);
+        if (options.force && options.expectedNativeFingerprint !== undefined && agendaFingerprint(existing) !== options.expectedNativeFingerprint) {
+            throw new ManagedAgendaConflictError(reconcileManagedAgenda(existing, current));
+        }
         const reconciliation = reconcileManagedAgenda(existing, current);
         if (reconciliation.status !== 'unchanged' && !options.force) {
             throw new ManagedAgendaConflictError(reconciliation);

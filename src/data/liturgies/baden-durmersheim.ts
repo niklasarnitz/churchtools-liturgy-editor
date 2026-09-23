@@ -1,4 +1,4 @@
-import type { LiturgyDefinition } from './types';
+import type { LiturgyDefinition, LiturgyNode, ServiceBlockNode } from './types';
 
 const apostolicCreed = `Ich glaube an Gott,
 den Vater, den Allmächtigen,
@@ -82,7 +82,7 @@ der du trägst die Sünd der Welt,
 Gib uns deinen Frieden!
 Amen.`;
 
-export const badenDurmersheimLiturgy: LiturgyDefinition = {
+const formerBadenDurmersheimLiturgy: LiturgyDefinition = {
     id: 'baden-durmersheim',
     version: 1,
     organizationId: 'ekiba',
@@ -183,5 +183,50 @@ export const badenDurmersheimLiturgy: LiturgyDefinition = {
                 { id: 'communion-postlude', type: 'heading', text: 'Postludium', responsible: '[Orgel / Klavier]' },
             ],
         },
+    ],
+};
+
+// The historical full-service forms above remain the source for their texts and
+// stable node IDs. Version 2 composes one word service with independent blocks.
+const formerBaptism = formerBadenDurmersheimLiturgy.nodes[0];
+const formerCommunion = formerBadenDurmersheimLiturgy.nodes[1];
+if (formerBaptism?.type !== 'optionalSection' || formerCommunion?.type !== 'optionalSection') {
+    throw new Error('Durmersheim service forms are incomplete.');
+}
+const baptismNodes = formerBaptism.nodes;
+const communionNodes = formerCommunion.nodes;
+const between = (nodes: LiturgyNode[], first: string, last: string): LiturgyNode[] => {
+    const start = nodes.findIndex((node) => node.id === first);
+    const end = nodes.findIndex((node) => node.id === last);
+    if (start < 0 || end < start) throw new Error(`Missing service nodes: ${first}–${last}`);
+    return nodes.slice(start, end + 1);
+};
+const baptismBlock: ServiceBlockNode = {
+    id: 'baptism-block', type: 'serviceBlock', blockKey: 'baptism', label: 'Taufe',
+    suggestedAfter: 'communion-creed',
+    nodes: [
+        ...between(baptismNodes, 'baptism-command', 'baptism-address-prayer'),
+        ...between(baptismNodes, 'baptism-commitment', 'baptism-song'),
+    ],
+};
+const communionTable = communionNodes.find((node) => node.id === 'communion-lords-table');
+if (communionTable?.type !== 'communionSection') throw new Error('Durmersheim communion table is incomplete.');
+const communionBlock: ServiceBlockNode = {
+    id: 'communion-block', type: 'serviceBlock', blockKey: 'communion', label: 'Abendmahl',
+    suggestedAfter: 'communion-after-sermon-song', nodes: communionTable.nodes,
+};
+
+export const badenDurmersheimLiturgy: LiturgyDefinition = {
+    ...formerBadenDurmersheimLiturgy,
+    version: 2,
+    optionalSectionMode: undefined,
+    blocks: [baptismBlock, communionBlock],
+    nodes: [
+        ...between(communionNodes, 'communion-prelude', 'communion-after-sermon-song'),
+        ...between(communionNodes, 'communion-intercessions', 'communion-intercessions'),
+        { id: 'service-lords-prayer', type: 'prayer', label: 'Vaterunser', text: lordsPrayer,
+            showWhen: { blockKey: 'communion', present: false },
+            print: { audience: 'congregation', alignment: 'indent' } },
+        ...between(communionNodes, 'communion-closing-song', 'communion-postlude'),
     ],
 };

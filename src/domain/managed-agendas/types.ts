@@ -1,4 +1,16 @@
 import type { NativeAgendaItemInput } from '../../churchtools/types';
+import type { LiturgyNode } from '../../data/liturgies';
+import type { LiturgicalDay } from '../../data/lectionaries';
+import type { AgendaSlotValue } from '../agenda-generation';
+
+export type ManagedEditorSnapshot = {
+    nodes: LiturgyNode[];
+    slots: Record<string, AgendaSlotValue | undefined>;
+    series?: string;
+    variantKey?: string;
+    selectedDate?: string;
+    liturgicalDay?: LiturgicalDay;
+};
 
 export type ManagedNodeMapping = {
     agendaItemIds: number[];
@@ -14,6 +26,8 @@ export type ManagedAgenda = {
     updatedAt: string;
     /** Native items explicitly accepted by the user through the keep decision. */
     acceptedExternalItemIds?: number[];
+    /** Exact editor input used for this managed version, so reopening is lossless. */
+    editorSnapshot?: ManagedEditorSnapshot;
 };
 
 export type GeneratedAgendaItem = {

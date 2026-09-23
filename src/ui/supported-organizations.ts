@@ -21,7 +21,7 @@ export const SUPPORTED_ORGANIZATIONS: SupportedOrganizationConfig[] = [
         region: 'Nordamerika / International',
         hymnalName: 'Lutheran Service Book (LSB)',
         songCount: 636,
-        description: 'Bekenntnislutherische Kirche mit englischsprachiger Liturgie und Kirchengesangbuch LSB.',
+        description: 'Lutheran Service Book mit englischsprachigen Liedern und editierbaren Ablaufvorlagen für die fünf Divine-Service-Settings. Die Vorlagen enthalten keine liturgischen Volltexte.',
         icon: 'fas fa-church',
     },
     {
@@ -45,7 +45,7 @@ export const SUPPORTED_ORGANIZATIONS: SupportedOrganizationConfig[] = [
         region: 'Deutschland',
         hymnalName: 'Evang.-Luth. Kirchengesangbuch² (ELKG²)',
         songCount: 864,
-        description: 'Selbständige Evangelisch-Lutherische Kirche mit lutherischem Hauptgottesdienst und Gesangbuch ELKG².',
+        description: 'ELKG² mit Liedern und Nummern sowie Strukturvorlagen für Ordnung 1 und 2; liturgische Texte und Gesänge werden vor Ort ergänzt.',
         icon: 'fas fa-cross',
     },
 ];

@@ -8,12 +8,12 @@ export type WorkspaceStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export type WorkspaceEventStatus = ServiceStatus | 'loading';
 
-export type WorkspaceEvent = NativeEvent & { id: number; name: string; startDate: string; status: WorkspaceEventStatus };
+export type WorkspaceEvent = NativeEvent & { id: number; name: string; startDate: string; status: WorkspaceEventStatus; canEditAgenda?: boolean };
 
 export const serviceStatusLabels: Record<WorkspaceEventStatus, string> = {
     loading: 'Ablauf wird geprüft …',
     'no-agenda': 'Noch kein Ablauf',
-    managed: 'Liturgie vorbereitet',
+    managed: 'Vorhandener ChurchTools-Ablauf',
     complete: 'Vollständig',
     'externally-changed': 'Außerhalb der Extension verändert',
     unavailable: 'Nicht verfügbar',
@@ -41,7 +41,9 @@ export type WorkspaceSong = {
     name: string;
     author?: string | null;
     category?: { id?: number; name?: string };
-    arrangements?: Array<{ id: number; name?: string; isDefault?: boolean }>;
+    arrangements?: WorkspaceArrangement[];
     hymnalName?: string;
     number?: string;
 };
+
+export type WorkspaceArrangement = { id: number; name?: string; isDefault?: boolean };

@@ -17,9 +17,11 @@ const props = defineProps<{
     busy?: boolean;
     isOnline?: boolean;
     apiConfigured?: boolean;
+    connectionChecking?: boolean;
     availableLiturgiesCount?: number;
     availableLectionariesCount?: number;
     uninstallReport?: { removedCount: number; retainedCount: number };
+    canManageSettings?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -61,6 +63,10 @@ const chooseOrganization = (orgId: string) => {
             </p>
         </div>
 
+        <div v-if="!props.canManageSettings" class="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700" role="status">
+            Lesemodus: Du kannst die Extension-Konfiguration ansehen. Änderungen kann nur ein Konto mit ChurchTools-Berechtigung „churchservice / edit masterdata“ speichern.
+        </div>
+
         <!-- 1. Kirchenkörper Selection Section -->
         <Card class="!p-6">
             <template #titleFull>
@@ -79,7 +85,7 @@ const chooseOrganization = (orgId: string) => {
             </template>
 
             <!-- Cards for currently available church bodies -->
-            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Verfügbare Kirchenkörper">
+            <div v-if="props.canManageSettings" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Verfügbare Kirchenkörper">
                 <div
                     v-for="org in SUPPORTED_ORGANIZATIONS"
                     :key="org.id"
@@ -120,6 +126,9 @@ const chooseOrganization = (orgId: string) => {
                         <p class="mt-1 text-xs leading-relaxed text-slate-500">
                             {{ org.description }}
                         </p>
+                        <p v-if="organizations.find((item) => item.id === org.id)?.liturgyIds.length === 0" class="mt-2 rounded-md bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-900">
+                            Gesangbuch verfügbar · keine Liturgievorlagen, kein Editor
+                        </p>
                     </div>
 
                     <!-- Hymnal tag and select button -->
@@ -155,8 +164,12 @@ const chooseOrganization = (orgId: string) => {
                 </div>
             </div>
 
+            <div v-else class="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
+                <span class="font-medium">Aktiver Kirchenkörper:</span> {{ selectedOrganization?.name ?? 'Nicht konfiguriert' }}
+            </div>
+
             <!-- Dropdown alternative -->
-            <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div v-if="props.canManageSettings" class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div class="max-w-md flex-1">
                     <SelectDropdown
                         id="organization-quick-select"
@@ -237,6 +250,7 @@ const chooseOrganization = (orgId: string) => {
                 :installed="props.installed"
                 :progress="props.progress"
                 :busy="props.busy"
+                :can-manage="props.canManageSettings"
                 @install="emit('install', $event)"
                 @retry="emit('retry', $event)"
                 @uninstall="emit('uninstall', $event)"
@@ -258,7 +272,7 @@ const chooseOrganization = (orgId: string) => {
                 <div class="divide-y divide-slate-100">
                     <div class="flex justify-between gap-4 py-3 text-sm">
                         <span class="text-slate-500">Status</span>
-                        <strong>{{ props.isOnline ? 'Verbunden' : props.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Nicht konfiguriert' }}</strong>
+                        <strong>{{ props.isOnline ? 'Verbunden' : props.connectionChecking ? 'Verbindung wird geprüft' : props.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Nicht konfiguriert' }}</strong>
                     </div>
                     <div class="flex justify-between gap-4 py-3 text-sm">
                         <span class="text-slate-500">Native APIs</span>

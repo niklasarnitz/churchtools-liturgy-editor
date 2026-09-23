@@ -5,7 +5,7 @@ import { computed, ref } from 'vue';
 import type { LiturgyDefinition } from '../data/liturgies';
 import type { OrganizationDefinition } from '../data/organizations';
 
-const props = defineProps<{ liturgies: LiturgyDefinition[]; organizations?: OrganizationDefinition[] }>();
+const props = defineProps<{ liturgies: LiturgyDefinition[]; organizations?: OrganizationDefinition[]; canUse?: boolean }>();
 const emit = defineEmits<{ (event: 'use', liturgy: LiturgyDefinition): void }>();
 
 const searchQuery = ref('');
@@ -38,7 +38,7 @@ const serviceTypeOptions = computed(() => {
 
 const filtered = computed(() => props.liturgies.filter((liturgy) => {
     if (communion.value !== 'all') {
-        const hasCommunion = liturgy.tags.includes('abendmahl') || liturgy.nodes.some((n) => n.type === 'communionSection');
+        const hasCommunion = liturgy.tags.includes('abendmahl') || liturgy.tags.includes('Holy Communion') || liturgy.nodes.some((n) => n.type === 'communionSection');
         if (hasCommunion !== (communion.value === 'yes')) return false;
     }
     if (tradition.value !== 'all' && liturgy.tradition !== tradition.value) {
@@ -82,7 +82,7 @@ const filtered = computed(() => props.liturgies.filter((liturgy) => {
                     <span class="inline-flex items-center gap-1.5"><Icon icon="fas fa-list" size="S" /> {{ liturgy.nodes.length }} Bausteine</span>
                     <span v-if="liturgy.lectionaryId" class="inline-flex items-center gap-1.5"><Icon icon="fas fa-calendar-days" size="S" /> {{ liturgy.lectionaryId }}</span>
                 </div>
-                <div class="mt-5 flex justify-end gap-2"><Button label="Für Gottesdienst verwenden" icon="fas fa-arrow-right" @click="emit('use', liturgy)" /></div>
+                <div v-if="props.canUse" class="mt-5 flex justify-end gap-2"><Button label="Für Gottesdienst verwenden" icon="fas fa-arrow-right" @click="emit('use', liturgy)" /></div>
             </Card>
         </div>
     </div>

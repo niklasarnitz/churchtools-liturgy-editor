@@ -7,6 +7,7 @@ import { JsonHymnalImportStateRepository } from '../domain/imports/state-store';
 import { HymnalUninstaller, type HymnalUsageChecker, type UninstallProgress } from '../domain/imports/uninstaller';
 import type { HymnalImportState, ImportProgress } from '../domain/imports/types';
 import { generateNormalizedAgenda } from '../domain/agenda-generation';
+import { parseSavedBlocks, type SavedBlock } from '../domain/liturgies/blocks';
 import { ManagedAgendaStateStore } from '../domain/managed-agendas/state';
 import { ManagedAgendaConflictError, ManagedAgendaSynchronizer } from '../domain/managed-agendas/sync';
 import type { GeneratedAgendaItem, ManagedAgenda } from '../domain/managed-agendas/types';
@@ -42,6 +43,7 @@ const USAGE_EVENT_PAGE_LIMIT = 100;
 const USAGE_EVENT_PAGE_CAP = 100;
 const USAGE_EVENT_COVERAGE_FAILURE = 'Die Event-Abdeckung der Nutzungsprüfung konnte nicht vollständig geladen werden.';
 const INSTALLATION_SETTINGS_KEY = 'settings:installation';
+const personalBlocksKey = (organizationId: string, userId: number) => `blocks:${organizationId}:${userId}`;
 
 function calendarIdOf(event: NativeEvent): number {
     const calendarId = Number(event.calendar.domainIdentifier);
@@ -93,12 +95,34 @@ export class LiturgyEditorApplication {
     }
 
     async updateInstallationSettings(input: { organizationId?: string }): Promise<InstallationSettings> {
+        await this.deps.permissions.assertSettingsWrite();
         if (input.organizationId && !this.resources.organizations.some((candidate) => candidate.id === input.organizationId)) {
             throw new Error(`Organization "${input.organizationId}" is not installed.`);
         }
         const settings: InstallationSettings = { version: 1, organizationId: input.organizationId };
         await this.state.set(INSTALLATION_SETTINGS_KEY, settings);
         return settings;
+    }
+
+    async getPersonalBlocks(organizationId: string, userId: number): Promise<SavedBlock[]> {
+        if (!this.resources.organizations.some((item) => item.id === organizationId) || !Number.isSafeInteger(userId) || userId <= 0) {
+            throw new Error('Bausteinbibliothek benötigt einen gültigen Kirchenkörper und Nutzer.');
+        }
+        const stored = await this.state.get<unknown>(personalBlocksKey(organizationId, userId));
+        if (stored === undefined) return [];
+        const parsed = parseSavedBlocks(JSON.stringify(stored));
+        if (!Array.isArray(stored) || parsed.length !== stored.length) throw new Error('Die gespeicherte Bausteinbibliothek ist beschädigt.');
+        return parsed;
+    }
+
+    async savePersonalBlocks(eventId: number, organizationId: string, userId: number, blocks: SavedBlock[]): Promise<void> {
+        const event = await this.deps.events.get(eventId);
+        await this.deps.permissions.assertAgendaWrite(calendarIdOf(event));
+        if (!this.resources.organizations.some((item) => item.id === organizationId) || !Number.isSafeInteger(userId) || userId <= 0) {
+            throw new Error('Bausteinbibliothek benötigt einen gültigen Kirchenkörper und Nutzer.');
+        }
+        if (parseSavedBlocks(JSON.stringify(blocks)).length !== blocks.length) throw new Error('Ungültiger Baustein in der Bibliothek.');
+        await this.state.set(personalBlocksKey(organizationId, userId), blocks);
     }
 
     async getUpcomingEvents(options: { from?: string; limit?: number; page?: number } = {}): Promise<NativeEvent[]> {
@@ -245,6 +269,12 @@ export class LiturgyEditorApplication {
         });
     }
 
+    async createSongArrangement(songId: number, input: { name: string; description?: string | null }) {
+        await this.deps.permissions.assertSongWrite();
+        if (!Number.isSafeInteger(songId) || songId <= 0 || !input.name.trim()) throw new Error('Bitte ein Lied und einen Namen für das Arrangement angeben.');
+        return this.deps.songs.createArrangement(songId, { name: input.name.trim(), description: input.description?.trim() || null });
+    }
+
     async saveAgenda(input: SaveAgendaInput): Promise<SaveAgendaResult> {
         const event = await this.deps.events.get(input.eventId);
         const calendarId = calendarIdOf(event);
@@ -261,7 +291,8 @@ export class LiturgyEditorApplication {
         if (!existingManaged) {
             let existing: NativeAgenda | undefined;
             try { existing = await this.deps.agendas.get(input.eventId); } catch (error) { if (toChurchToolsError(error).kind !== 'not-found') throw error; }
-            if (existing) throw new ManagedAgendaConflictError({ status: 'externally-changed', currentFingerprint: agendaFingerprint(existing), reasons: [{ kind: 'agenda-changed' }] });
+            if (existing && (!input.force || (input.expectedNativeFingerprint !== undefined && agendaFingerprint(existing) !== input.expectedNativeFingerprint))) throw new ManagedAgendaConflictError({ status: 'externally-changed', currentFingerprint: agendaFingerprint(existing), reasons: [{ kind: 'agenda-changed' }] });
+            if (!existing && input.force && input.expectedNativeFingerprint !== undefined && input.expectedNativeFingerprint !== null) throw new ManagedAgendaConflictError({ status: 'missing-agenda', reasons: [] });
             const agenda = await this.deps.agendas.upsert(input.eventId, {
                 calendarId,
                 eventStartPosition: generated.eventStartPosition,
@@ -273,7 +304,20 @@ export class LiturgyEditorApplication {
             await this.repositories.managed.save(managedAgenda);
             return { managedAgenda, agenda: refreshed, generatedItemCount: generatedItems.length };
         }
-        const managedAgenda = await this.synchronizer.apply(input.eventId, existingManaged, generatedItems, { force: input.force, now: this.now });
+        let managedAgenda: ManagedAgenda;
+        try {
+            managedAgenda = await this.synchronizer.apply(input.eventId, existingManaged, generatedItems, { force: input.force, expectedNativeFingerprint: input.expectedNativeFingerprint, now: this.now });
+        } catch (error) {
+            // An explicitly confirmed reapply may recreate an agenda that was
+            // deleted in ChurchTools. A new native agenda appearing meanwhile
+            // still reaches the normal unmanaged conflict guard.
+            if (!input.force || toChurchToolsError(error).kind !== 'not-found') throw error;
+            await this.repositories.managed.delete(input.eventId);
+            return this.saveAgenda({ ...input, force: false });
+        }
+        managedAgenda.templateId = input.liturgyId;
+        managedAgenda.templateVersion = registeredLiturgy.version;
+        managedAgenda.editorSnapshot = this.createEditorSnapshot(input);
         await this.repositories.managed.save(managedAgenda);
         const agenda = await this.deps.agendas.get(input.eventId);
         return { managedAgenda, agenda, generatedItemCount: generatedItems.length };
@@ -324,7 +368,21 @@ export class LiturgyEditorApplication {
             }
             nodeMappings[entry.nodeId] = { agendaItemIds: [item.id] };
         }
-        return { eventId: input.eventId, agendaId: agenda.id, templateId: input.liturgyId, templateVersion: this.requireLiturgy(input.liturgyId).version, nodeMappings, lastAppliedFingerprint: agendaFingerprint(agenda), updatedAt: this.now() };
+        return { eventId: input.eventId, agendaId: agenda.id, templateId: input.liturgyId, templateVersion: this.requireLiturgy(input.liturgyId).version, nodeMappings, lastAppliedFingerprint: agendaFingerprint(agenda), updatedAt: this.now(), editorSnapshot: this.createEditorSnapshot(input) };
+    }
+
+    private createEditorSnapshot(input: SaveAgendaInput): ManagedAgenda['editorSnapshot'] {
+        // Editor values can arrive as Vue reactive proxies; JSON is also the
+        // representation persisted by the ChurchTools custom-module store.
+        const persistable = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+        return {
+            nodes: persistable(input.nodes ?? this.requireLiturgy(input.liturgyId).nodes),
+            slots: persistable(input.slots ?? {}),
+            series: input.series,
+            variantKey: input.variantKey,
+            selectedDate: input.selectedDate,
+            liturgicalDay: input.liturgicalDay ? persistable(input.liturgicalDay) : undefined,
+        };
     }
 
     private requireHymnal(id: string): HymnalDefinition { const hymnal = this.resources.hymnals.find((candidate) => candidate.id === id); if (!hymnal) throw new Error(`Hymnal "${id}" is not installed in this extension.`); return hymnal; }

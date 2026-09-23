@@ -36,7 +36,7 @@ export const organizations = [
         shortName: 'SELK',
         language: 'de',
         hymnalIds: ['elkg2'],
-        liturgyIds: [],
+        liturgyIds: ['selk-order-1', 'selk-order-1-communion', 'selk-order-2', 'selk-free-order'],
         lectionaryIds: [],
     },
     {
@@ -45,7 +45,7 @@ export const organizations = [
         shortName: 'LCMS',
         language: 'en',
         hymnalIds: ['lutheran-service-book'],
-        liturgyIds: [],
+        liturgyIds: ['lcms-divine-service-1', 'lcms-divine-service-2', 'lcms-divine-service-3', 'lcms-divine-service-4', 'lcms-divine-service-5', 'lcms-free-order'],
         lectionaryIds: [],
     },
 ] satisfies OrganizationDefinition[];

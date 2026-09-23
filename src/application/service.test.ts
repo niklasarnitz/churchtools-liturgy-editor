@@ -6,6 +6,8 @@ import type { EventListQuery } from '../churchtools/events';
 import type { HymnalUsageChecker } from '../domain/imports/uninstaller';
 import { testBadenLiturgy, testResourceRegistry } from '../test-fixtures/resources';
 import { LiturgyEditorApplication } from './service';
+import { agendaFingerprint } from '../domain/reconciliation/fingerprint';
+import { instantiateNode, type SavedBlock } from '../domain/liturgies/blocks';
 
 class MemoryStore implements JsonStateStore {
     values = new Map<string, unknown>();
@@ -34,7 +36,7 @@ function dependencies(overrides: Record<string, unknown> = {}) {
         create: async () => ({ id: 1, name: 'Song' }), update: async () => ({ id: 1, name: 'Song' }), delete: async () => undefined,
         listArrangements: async () => [], createArrangement: async () => ({ id: 50, name: 'Standard', isDefault: true }), list: async () => [],
     };
-    const permissions = { assertAgendaRead: async () => undefined, assertAgendaWrite: async () => undefined, assertSongRead: async () => undefined, assertSongWrite: async () => undefined };
+    const permissions = { assertAgendaRead: async () => undefined, assertAgendaWrite: async () => undefined, assertSongRead: async () => undefined, assertSongWrite: async () => undefined, assertSettingsWrite: async () => undefined };
     return {
         events: { get: async () => event, list: async () => [event] }, agendas, songs, permissions,
         state: new MemoryStore(), resources: testResourceRegistry,
@@ -47,6 +49,40 @@ function usageChecker(app: LiturgyEditorApplication): Promise<HymnalUsageChecker
 }
 
 describe('LiturgyEditorApplication workflow', () => {
+    it('persists independently duplicated blocks in the managed agenda snapshot', async () => {
+        const app = new LiturgyEditorApplication(dependencies());
+        const source = { id: 'block', type: 'serviceBlock' as const, blockKey: 'festival', label: 'Festteil', nodes: [
+            { id: 'song', type: 'songSlot' as const, slot: 'festivalSong', label: 'Festlied', required: true },
+        ] };
+        let index = 0;
+        const nextId = (type: string) => `${type}-${++index}`;
+        const first = instantiateNode(source, { festivalSong: { kind: 'song', songId: 1, arrangementId: 2 } }, nextId);
+        const second = instantiateNode(source, { festivalSong: { kind: 'song', songId: 3, arrangementId: 4 } }, nextId);
+        const saved = await app.saveAgenda({ eventId: 10, organizationId: 'ekiba', liturgyId: testBadenLiturgy.id,
+            nodes: [first.node, second.node], slots: { ...first.slots, ...second.slots } });
+        expect(Object.keys(saved.managedAgenda.nodeMappings)).toHaveLength(3);
+        expect(saved.managedAgenda.editorSnapshot?.nodes).toEqual([first.node, second.node]);
+        expect(saved.agenda.items.filter((item) => item.type === 'song').map((item) => item.arrangementId)).toEqual([2, 4]);
+    });
+    it('stores personal blocks per user and organization and requires agenda write permission', async () => {
+        const state = new MemoryStore();
+        const saved: SavedBlock = { id: 'personal-1', name: 'Eigener Teil', block: {
+            id: 'block-1', type: 'serviceBlock', blockKey: 'own-part', label: 'Eigener Teil',
+            nodes: [{ id: 'line-1', type: 'heading', text: 'Beginn' }],
+        }, slots: {} };
+        const app = new LiturgyEditorApplication(dependencies({ state }));
+        await app.savePersonalBlocks(10, 'ekiba', 7, [saved]);
+        const reopened = new LiturgyEditorApplication(dependencies({ state }));
+        await expect(reopened.getPersonalBlocks('ekiba', 7)).resolves.toEqual([saved]);
+        await expect(reopened.getPersonalBlocks('ekiba', 8)).resolves.toEqual([]);
+        await expect(reopened.getPersonalBlocks('selk', 7)).resolves.toEqual([]);
+        const denied = new LiturgyEditorApplication(dependencies({
+            state,
+            permissions: { assertAgendaWrite: async () => { throw new ChurchToolsError('forbidden', { kind: 'forbidden', status: 403 }); } },
+        }));
+        await expect(denied.savePersonalBlocks(10, 'ekiba', 7, [])).rejects.toMatchObject({ kind: 'forbidden' });
+        await expect(reopened.getPersonalBlocks('ekiba', 7)).resolves.toEqual([saved]);
+    });
     it('stores one installation-wide organization and rejects unknown organizations', async () => {
         const state = new MemoryStore();
         const app = new LiturgyEditorApplication(dependencies({ state }));
@@ -60,6 +96,16 @@ describe('LiturgyEditorApplication workflow', () => {
         await expect(app.updateInstallationSettings({ organizationId: 'unknown' })).rejects.toThrow(
             'Organization "unknown" is not installed.',
         );
+    });
+
+    it('requires settings write permission before changing the installation organization', async () => {
+        const state = new MemoryStore();
+        const app = new LiturgyEditorApplication(dependencies({
+            state,
+            permissions: { assertSettingsWrite: async () => { throw new ChurchToolsError('forbidden', { kind: 'forbidden', status: 403 }); } },
+        }));
+        await expect(app.updateInstallationSettings({ organizationId: 'ekiba' })).rejects.toMatchObject({ kind: 'forbidden' });
+        await expect(app.getInstallationSettings()).resolves.toEqual({ version: 1 });
     });
 
     it('loads upcoming services in pages of ten by default', async () => {
@@ -222,6 +268,96 @@ describe('LiturgyEditorApplication workflow', () => {
             'Sendung und Segen',
             'Eröffnung',
         ]);
+        expect(saved.managedAgenda.editorSnapshot?.nodes.map((node) => node.id)).toEqual(['closing', 'opening']);
+        expect((await app.repositories.managed.get(10))?.editorSnapshot?.nodes.map((node) => node.id)).toEqual(['closing', 'opening']);
+    });
+
+    it('keeps an existing native agenda until its replacement is explicitly forced', async () => {
+        const existing: NativeAgenda = {
+            id: 20,
+            calendarId: 4,
+            items: [{ id: 77, type: 'text', title: 'Bestehender Ablauf' }],
+        };
+        let upserted = false;
+        const app = new LiturgyEditorApplication(dependencies({
+            agendas: {
+                get: async () => existing,
+                upsert: async (_eventId: number, input: { items: NativeAgenda['items'] }) => {
+                    upserted = true;
+                    existing.items = input.items.map((item, index) => ({ ...item, id: index + 100 }));
+                    return existing;
+                },
+            },
+        }));
+        const input = {
+            eventId: 10,
+            organizationId: 'ekiba',
+            liturgyId: testBadenLiturgy.id,
+            nodes: [{ id: 'opening', type: 'heading' as const, text: 'Eröffnung' }],
+            variantKey: 'service',
+            selectedDate: '2026-09-27',
+        };
+        await expect(app.saveAgenda(input)).rejects.toThrow('außerhalb');
+        expect(upserted).toBe(false);
+        expect(existing.items[0]?.title).toBe('Bestehender Ablauf');
+
+        const reviewedFingerprint = agendaFingerprint(existing);
+        existing.items[0]!.title = 'Nochmals geändert';
+        await expect(app.saveAgenda({ ...input, force: true, expectedNativeFingerprint: reviewedFingerprint })).rejects.toThrow('außerhalb');
+        expect(upserted).toBe(false);
+
+        const saved = await app.saveAgenda({ ...input, force: true });
+        expect(upserted).toBe(true);
+        expect(saved.managedAgenda.editorSnapshot).toMatchObject({
+            nodes: input.nodes,
+            variantKey: 'service',
+            selectedDate: '2026-09-27',
+        });
+    });
+
+    it('recreates a deleted managed agenda only after confirmed reapply', async () => {
+        let agenda: NativeAgenda | undefined;
+        let writes = 0;
+        const app = new LiturgyEditorApplication(dependencies({
+            agendas: {
+                get: async () => {
+                    if (!agenda) throw new ChurchToolsError('missing', { kind: 'not-found', status: 404 });
+                    return agenda;
+                },
+                upsert: async (_eventId: number, input: { calendarId: number; items: NativeAgenda['items'] }) => {
+                    writes += 1;
+                    agenda = { id: writes + 20, calendarId: input.calendarId, items: input.items.map((item, index) => ({ ...item, id: writes * 100 + index })) };
+                    return agenda;
+                },
+            },
+        }));
+        const input = { eventId: 10, organizationId: 'ekiba', liturgyId: testBadenLiturgy.id, nodes: [{ id: 'opening', type: 'heading' as const, text: 'Eröffnung' }] };
+        await app.saveAgenda(input);
+        agenda = undefined;
+        await expect(app.saveAgenda(input)).rejects.toThrow();
+        expect(writes).toBe(1);
+        const restored = await app.saveAgenda({ ...input, force: true });
+        expect(writes).toBe(2);
+        expect(restored.managedAgenda.agendaId).toBe(22);
+    });
+
+    it('rejects a forced managed update when the native agenda changed after review', async () => {
+        let agenda: NativeAgenda | undefined;
+        const app = new LiturgyEditorApplication(dependencies({
+            agendas: {
+                get: async () => { if (!agenda) throw new ChurchToolsError('missing', { kind: 'not-found', status: 404 }); return agenda; },
+                upsert: async (_eventId: number, input: { calendarId: number; items: NativeAgenda['items'] }) => {
+                    agenda = { id: 20, calendarId: input.calendarId, items: input.items.map((item, index) => ({ ...item, id: index + 100 })) };
+                    return agenda;
+                },
+                updateItem: async () => { throw new Error('should not write after stale review'); },
+            },
+        }));
+        const input = { eventId: 10, organizationId: 'ekiba', liturgyId: testBadenLiturgy.id, nodes: [{ id: 'opening', type: 'heading' as const, text: 'Eröffnung' }] };
+        await app.saveAgenda(input);
+        const reviewedFingerprint = agendaFingerprint(agenda!);
+        agenda!.items[0]!.title = 'Neue Änderung';
+        await expect(app.saveAgenda({ ...input, force: true, expectedNativeFingerprint: reviewedFingerprint })).rejects.toThrow('außerhalb');
     });
 
     it('writes song comments, structured sermon data, and service placeholders to native agenda fields', async () => {
@@ -293,6 +429,18 @@ describe('LiturgyEditorApplication workflow', () => {
         const deps = dependencies({ permissions: { assertAgendaRead: async () => undefined, assertAgendaWrite: async () => undefined, assertSongRead: async () => undefined, assertSongWrite: async () => { throw new ChurchToolsError('forbidden', { kind: 'forbidden', status: 403 }); } } });
         const app = new LiturgyEditorApplication(deps);
         await expect(app.installHymnal('eg-baden')).rejects.toMatchObject({ kind: 'forbidden' });
+    });
+
+    it('creates a named native song arrangement after checking song write permission', async () => {
+        const calls: Array<{ songId: number; name: string }> = [];
+        const app = new LiturgyEditorApplication(dependencies({
+            songs: { createArrangement: async (songId: number, input: { name: string }) => {
+                calls.push({ songId, name: input.name });
+                return { id: 81, name: input.name };
+            } },
+        }));
+        await expect(app.createSongArrangement(42, { name: ' Strophen 1, 3 ' })).resolves.toMatchObject({ id: 81, name: 'Strophen 1, 3' });
+        expect(calls).toEqual([{ songId: 42, name: 'Strophen 1, 3' }]);
     });
 
     it('uses an external lectionary source and applies manual overrides last', async () => {

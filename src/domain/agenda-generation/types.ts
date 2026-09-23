@@ -8,6 +8,8 @@ export interface SongSlotValue {
     title?: string;
     sourceName?: string;
     number?: string;
+    arrangementName?: string;
+    stanzas?: number[];
     /** Event-specific information such as verses, repetitions, or melody. */
     comment?: string;
 }

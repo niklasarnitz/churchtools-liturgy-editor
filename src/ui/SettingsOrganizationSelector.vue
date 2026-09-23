@@ -14,8 +14,10 @@ const organizationDropdownOptions = computed(() => [
 ]);
 const organizationRadioOptions = computed(() => SUPPORTED_ORGANIZATIONS.map((org) => ({ id: org.id, nameTranslated: org.displayName })));
 const organizationDetails = (id: string) => SUPPORTED_ORGANIZATIONS.find((org) => org.id === id);
-const onDropdownChange = (value: string | number) => emit('selectOrganization', String(value || ''));
-const chooseOrganization = (orgId: string) => emit('selectOrganization', orgId);
+const chooseOrganization = (orgId: string) => {
+    if (!props.busy) emit('selectOrganization', orgId);
+};
+const onDropdownChange = (value: string | number) => chooseOrganization(String(value || ''));
 </script>
 
 <template>
@@ -38,6 +40,7 @@ const chooseOrganization = (orgId: string) => emit('selectOrganization', orgId);
 
             <RadioGroup
                 v-if="props.canManageSettings"
+                :class="props.busy ? 'pointer-events-none opacity-60' : ''"
                 :value="props.selectedOrganizationId"
                 :options="organizationRadioOptions"
                 @update:value="onDropdownChange"

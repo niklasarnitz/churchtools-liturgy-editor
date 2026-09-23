@@ -13,7 +13,7 @@ import type { LiturgicalSuggestion } from '../application';
 import type { NativeAgenda } from '../churchtools';
 import type { ManagedAgenda } from '../domain/managed-agendas';
 import type { WorkspaceEvent, WorkspaceSong, AgendaDriftView } from './types';
-import SongPicker from './SongPicker.vue';
+import ServiceEditorNodeFields from './ServiceEditorNodeFields.vue';
 import { openLiturgyPrintDialog } from '../domain/liturgy-document';
 import { captureBlock, instantiateNode, type SavedBlock } from '../domain/liturgies/blocks';
 
@@ -754,17 +754,6 @@ const dropAt = (index: number) => {
 };
 const endDrag = () => { dragPayload.value = undefined; activeDropIndex.value = undefined; };
 
-const eventValue = (event: Event): string => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
-const updateLabel = (node: LiturgyNode, value: string) => { node.label = value; };
-const editableText = (node: LiturgyNode): string => {
-    if (node.type === 'fixedText' || node.type === 'rubric' || node.type === 'prayer') return node.text ?? '';
-    if (node.type === 'creed') return node.creed ?? '';
-    return '';
-};
-const updateEditableText = (node: LiturgyNode, value: string) => {
-    if (node.type === 'fixedText' || node.type === 'rubric' || node.type === 'prayer') node.text = value;
-    if (node.type === 'creed') node.creed = value;
-};
 const conditionHint = (node: LiturgyNode): string | undefined => {
     if (!node.showWhen) return undefined;
     const label = selectedLiturgy.value?.blocks?.find((block) => block.blockKey === node.showWhen?.blockKey)?.label ?? node.showWhen.blockKey;
@@ -879,22 +868,35 @@ defineExpose({
                                     <div class="group-library-action"><button type="button" :disabled="libraryLoading || librarySaving || !currentUserId" @click="saveBlockToLibrary(node)"><Icon icon="fas fa-bookmark" size="S" /> Für weitere Gottesdienste speichern</button><small>{{ libraryLoading ? 'Bausteinbibliothek wird geladen …' : 'Persönlich in ChurchTools gespeichert' }}</small></div>
                                     <div v-for="(child, childIndex) in node.nodes" :key="child.id" class="group-child">
                                         <div class="group-child__heading"><strong>{{ nodeTitle(child) }}</strong><div class="group-child__actions"><button type="button" :disabled="childIndex === 0" :aria-label="`${nodeTitle(child)} nach oben`" @click="moveChild(node, childIndex, -1)"><Icon icon="fas fa-arrow-up" size="S" /></button><button type="button" :disabled="childIndex === node.nodes.length - 1" :aria-label="`${nodeTitle(child)} nach unten`" @click="moveChild(node, childIndex, 1)"><Icon icon="fas fa-arrow-down" size="S" /></button><button type="button" :aria-label="`${nodeTitle(child)} duplizieren`" @click="duplicateChild(node, childIndex)"><Icon icon="fas fa-copy" size="S" /></button><button type="button" :aria-label="`${nodeTitle(child)} entfernen`" @click="removeChild(node, childIndex)"><Icon icon="fas fa-trash-can" size="S" /></button></div></div>
-                                        <input v-if="child.type !== 'heading'" v-model="child.label" class="editor-input" aria-label="Bezeichnung des Ablaufpunkts" placeholder="Bezeichnung" />
-                                        <input v-if="child.type === 'heading'" v-model="child.text" class="editor-input" aria-label="Überschrift" />
-                                        <SongPicker v-else-if="child.type === 'songSlot'" :label="child.label ?? 'Lied'" :required="child.required" :songs="songs" :search-songs="searchSongs" :create-arrangement="createArrangement" :can-create-arrangements="canCreateArrangements" :model-value="songSlots[child.slot]" @update:model-value="songSlots[child.slot] = $event" />
-                                        <div v-else-if="child.type === 'readingSlot'" class="reading-fields"><select :value="child.lectionarySlot ?? child.slot" class="editor-input" aria-label="Lesungstyp" @change="child.lectionarySlot = eventValue($event) as typeof child.lectionarySlot"><option value="oldTestament">Altes Testament</option><option value="psalm">Psalm</option><option value="epistle">Epistel</option><option value="gospel">Evangelium</option></select><input v-model="textSlots[child.slot]" class="editor-input" :placeholder="readingHint(child.lectionarySlot ?? child.slot)" /></div>
-                                        <textarea v-else-if="child.type === 'freeTextSlot'" v-model="textSlots[child.slot]" class="editor-textarea" :placeholder="child.label ?? 'Text'"></textarea>
-                                        <div v-else-if="child.type === 'sermonSlot'" class="sermon-fields"><input v-model="sermonTitles[child.slot ?? 'sermon']" class="editor-input" placeholder="Predigttitel" /><input v-model="sermonTexts[child.slot ?? 'sermon']" class="editor-input" placeholder="Predigttext" /></div>
-                                        <textarea v-else-if="child.type === 'fixedText' || child.type === 'rubric' || child.type === 'prayer' || child.type === 'creed'" :value="editableText(child)" class="editor-textarea" :aria-label="`Text für ${nodeTitle(child)}`" @input="updateEditableText(child, eventValue($event))"></textarea>
+                                        <Input v-if="child.type === 'songSlot' || child.type === 'readingSlot' || child.type === 'sermonSlot' || child.type === 'freeTextSlot'" v-model="child.label" label="Bezeichnung des Ablaufpunkts" />
+                                        <ServiceEditorNodeFields
+                                            :node="child"
+                                            :songs="songs"
+                                            :song-slots="songSlots"
+                                            :text-slots="textSlots"
+                                            :sermon-titles="sermonTitles"
+                                            :sermon-texts="sermonTexts"
+                                            :search-songs="searchSongs"
+                                            :create-arrangement="createArrangement"
+                                            :can-create-arrangements="canCreateArrangements"
+                                            :reading-hint="readingHint"
+                                        />
                                     </div>
                                     <div class="group-add"><select v-model="childKinds[node.id]" class="editor-input" aria-label="Art des neuen Ablaufpunkts"><option v-for="kind in basicPalette" :key="kind.kind" :value="kind.kind">{{ kind.label }}</option></select><button type="button" @click="addChild(node)"><Icon icon="fas fa-plus" size="S" /> Ablaufpunkt hinzufügen</button></div>
                                 </details>
-                                <input v-else-if="node.type === 'heading'" v-model="node.text" class="editor-input editor-input--title" aria-label="Überschrift" />
-                                <SongPicker v-else-if="node.type === 'songSlot'" :label="node.label ?? 'Lied'" :required="node.required" :songs="songs" :search-songs="searchSongs" :create-arrangement="createArrangement" :can-create-arrangements="canCreateArrangements" :model-value="songSlots[node.slot]" @update:model-value="songSlots[node.slot] = $event" />
-                                <div v-else-if="node.type === 'readingSlot'" class="reading-fields"><select :value="node.lectionarySlot ?? node.slot" class="editor-input" aria-label="Lesungstyp" @change="node.lectionarySlot = eventValue($event) as typeof node.lectionarySlot"><option value="oldTestament">Altes Testament</option><option value="psalm">Psalm</option><option value="epistle">Epistel</option><option value="gospel">Evangelium</option></select><div class="slot-field"><input v-model="textSlots[node.slot]" class="editor-input" :placeholder="readingHint(node.lectionarySlot ?? node.slot)" /><small>Vorschlag: {{ readingHint(node.lectionarySlot ?? node.slot) }}</small></div></div>
-                                <div v-else-if="node.type === 'sermonSlot'" class="sermon-fields"><input v-model="sermonTitles[node.slot ?? 'sermon']" class="editor-input" placeholder="Predigttitel" /><input v-model="sermonTexts[node.slot ?? 'sermon']" class="editor-input" :placeholder="readingHint('sermon')" /></div>
-                                <textarea v-else-if="node.type === 'freeTextSlot'" v-model="textSlots[node.slot]" class="editor-textarea" :placeholder="`Text für „${node.label ?? 'Freier Text'}“`"></textarea>
-                                <div v-else-if="node.type === 'fixedText' || node.type === 'rubric' || node.type === 'prayer' || node.type === 'creed'" class="fixed-text-preview"><p>{{ editableText(node) || 'Noch kein Text hinterlegt' }}</p><details><summary>Text bearbeiten</summary><div class="details-fields"><input :value="node.label ?? ''" class="editor-input" placeholder="Bezeichnung" @input="updateLabel(node, eventValue($event))" /><textarea :value="editableText(node)" class="editor-textarea" placeholder="Text" @input="updateEditableText(node, eventValue($event))"></textarea></div></details></div>
+                                <ServiceEditorNodeFields
+                                    v-else
+                                    :node="node"
+                                    :songs="songs"
+                                    :song-slots="songSlots"
+                                    :text-slots="textSlots"
+                                    :sermon-titles="sermonTitles"
+                                    :sermon-texts="sermonTexts"
+                                    :search-songs="searchSongs"
+                                    :create-arrangement="createArrangement"
+                                    :can-create-arrangements="canCreateArrangements"
+                                    :reading-hint="readingHint"
+                                />
                             </div>
                         </article>
                     </template>

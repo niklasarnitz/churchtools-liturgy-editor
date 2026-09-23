@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Button, Card, EmptyState, Icon, SelectDropdown } from './styleguide';
+import { EmptyState, Icon } from './styleguide';
 import HymnalCatalog from './HymnalCatalog.vue';
-import { SUPPORTED_ORGANIZATIONS } from './supported-organizations';
+import SettingsOrganizationSelector from './SettingsOrganizationSelector.vue';
+import SettingsDiagnostics from './SettingsDiagnostics.vue';
 import type { HymnalDefinition } from '../data/hymnals';
 import type { OrganizationDefinition } from '../data/organizations';
 import type { HymnalImportState } from '../domain/imports';
@@ -35,21 +36,6 @@ const selectedOrganization = computed(() =>
     props.organizations.find((org) => org.id === props.selectedOrganizationId),
 );
 
-const organizationDropdownOptions = computed(() => [
-    { id: '', name: '– Kein Kirchenkörper ausgewählt –' },
-    ...SUPPORTED_ORGANIZATIONS.map((org) => ({
-        id: org.id,
-        name: org.displayName,
-    })),
-]);
-
-const onDropdownChange = (value: string | number) => {
-    emit('selectOrganization', String(value || ''));
-};
-
-const chooseOrganization = (orgId: string) => {
-    emit('selectOrganization', orgId);
-};
 </script>
 
 <template>
@@ -67,136 +53,13 @@ const chooseOrganization = (orgId: string) => {
             Lesemodus: Du kannst die Extension-Konfiguration ansehen. Änderungen kann nur ein Konto mit ChurchTools-Berechtigung „churchservice / edit masterdata“ speichern.
         </div>
 
-        <!-- 1. Kirchenkörper Selection Section -->
-        <Card class="!p-6">
-            <template #titleFull>
-                <div class="flex items-start justify-between gap-4">
-                    <div>
-                        <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Schritt 1: Kirchenkörper</div>
-                        <h3 class="mt-1 text-lg font-semibold">Kirchenkörper auswählen</h3>
-                        <p class="mt-1 text-sm text-slate-500">
-                            Die Auswahl bestimmt, welche Gesangbücher, Liturgievorlagen und Lektionare in ChurchTools bereitgestellt werden.
-                        </p>
-                    </div>
-                    <div class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600">
-                        <Icon icon="fas fa-church" size="L" />
-                    </div>
-                </div>
-            </template>
-
-            <!-- Cards for currently available church bodies -->
-            <div v-if="props.canManageSettings" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Verfügbare Kirchenkörper">
-                <div
-                    v-for="org in SUPPORTED_ORGANIZATIONS"
-                    :key="org.id"
-                    role="radio"
-                    :aria-checked="props.selectedOrganizationId === org.id"
-                    tabindex="0"
-                    class="group relative flex flex-col justify-between rounded-xl border-2 p-5 text-left transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0f70b7]"
-                    :class="[
-                        props.selectedOrganizationId === org.id
-                            ? 'border-[#0f70b7] bg-sky-50/60 shadow-sm'
-                            : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-                    ]"
-                    @click="chooseOrganization(org.id)"
-                    @keydown.space.prevent="chooseOrganization(org.id)"
-                    @keydown.enter.prevent="chooseOrganization(org.id)"
-                >
-                    <div>
-                        <!-- Header badge row -->
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
-                                {{ org.shortName }}
-                            </span>
-                            <span
-                                v-if="props.selectedOrganizationId === org.id"
-                                class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800"
-                            >
-                                <Icon icon="fas fa-check" size="S" /> Aktiv
-                            </span>
-                            <span v-else class="text-xs font-medium text-slate-400">
-                                {{ org.language }}
-                            </span>
-                        </div>
-
-                        <!-- Organization Title -->
-                        <h4 class="mt-3 text-base font-semibold tracking-tight text-slate-900 group-hover:text-[#0f70b7]">
-                            {{ org.subtitle }}
-                        </h4>
-                        <p class="mt-1 text-xs leading-relaxed text-slate-500">
-                            {{ org.description }}
-                        </p>
-                        <p v-if="organizations.find((item) => item.id === org.id)?.liturgyIds.length === 0" class="mt-2 rounded-md bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-900">
-                            Gesangbuch verfügbar · keine Liturgievorlagen, kein Editor
-                        </p>
-                    </div>
-
-                    <!-- Hymnal tag and select button -->
-                    <div class="mt-4 border-t border-slate-100 pt-3">
-                        <div class="flex items-center gap-1.5 text-xs text-slate-600">
-                            <Icon icon="fas fa-book-open" size="S" class="text-slate-400" />
-                            <span class="font-medium truncate">{{ org.hymnalName }}</span>
-                        </div>
-                        <div class="mt-1 text-[11px] text-slate-400">
-                            {{ org.songCount }} Lieder verfügbar
-                        </div>
-
-                        <div class="mt-3">
-                            <Button
-                                v-if="props.selectedOrganizationId === org.id"
-                                label="Ausgewählt"
-                                icon="fas fa-check"
-                                size="S"
-                                :disabled="props.busy"
-                                class="w-full justify-center !bg-emerald-600 !border-emerald-600"
-                            />
-                            <Button
-                                v-else
-                                label="Diesen Kirchenkörper wählen"
-                                size="S"
-                                :outlined="true"
-                                :disabled="props.busy"
-                                class="w-full justify-center"
-                                @click.stop="chooseOrganization(org.id)"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div v-else class="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-700">
-                <span class="font-medium">Aktiver Kirchenkörper:</span> {{ selectedOrganization?.name ?? 'Nicht konfiguriert' }}
-            </div>
-
-            <!-- Dropdown alternative -->
-            <div v-if="props.canManageSettings" class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <div class="max-w-md flex-1">
-                    <SelectDropdown
-                        id="organization-quick-select"
-                        :model-value="props.selectedOrganizationId ?? ''"
-                        label="Kirchenkörper (Schnellauswahl / Zurücksetzen)"
-                        :options="organizationDropdownOptions"
-                        :emit-id="true"
-                        :clear="false"
-                        @update:model-value="onDropdownChange"
-                    />
-                </div>
-                <div v-if="props.selectedOrganizationId" class="text-xs text-slate-500">
-                    <Button
-                        label="Auswahl aufheben"
-                        size="S"
-                        :outlined="true"
-                        :disabled="props.busy"
-                        @click="chooseOrganization('')"
-                    />
-                </div>
-            </div>
-
-            <!-- In-preparation note -->
-            <p class="mt-3 text-xs text-slate-400">
-                Hinweis: Weitere Kirchenkörper (wie z. B. ELKB, ELK-WUE) befinden sich derzeit in Vorbereitung.
-            </p>
-        </Card>
+        <SettingsOrganizationSelector
+            :selected-organization-id="props.selectedOrganizationId"
+            :organizations="props.organizations"
+            :busy="props.busy"
+            :can-manage-settings="props.canManageSettings"
+            @select-organization="emit('selectOrganization', $event)"
+        />
 
         <!-- 2. Hymnals Installation Section -->
         <div class="space-y-4">
@@ -257,63 +120,14 @@ const chooseOrganization = (orgId: string) => {
             />
         </div>
 
-        <!-- 3. System & Diagnostics Section -->
-        <div class="grid gap-5 xl:grid-cols-2">
-            <Card>
-                <template #titleFull>
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Verbindung</div>
-                            <h3 class="mt-1 text-lg font-semibold">ChurchTools</h3>
-                        </div>
-                        <Icon icon="fas fa-plug" size="L" class="text-slate-500" />
-                    </div>
-                </template>
-                <div class="divide-y divide-slate-100">
-                    <div class="flex justify-between gap-4 py-3 text-sm">
-                        <span class="text-slate-500">Status</span>
-                        <strong>{{ props.isOnline ? 'Verbunden' : props.connectionChecking ? 'Verbindung wird geprüft' : props.apiConfigured ? 'Verbindung fehlgeschlagen' : 'Nicht konfiguriert' }}</strong>
-                    </div>
-                    <div class="flex justify-between gap-4 py-3 text-sm">
-                        <span class="text-slate-500">Native APIs</span>
-                        <span>Events · Songs · Agenda · Berechtigungen</span>
-                    </div>
-                    <div class="flex justify-between gap-4 py-3 text-sm">
-                        <span class="text-slate-500">Speicher</span>
-                        <span>ChurchTools Custom Module State</span>
-                    </div>
-                </div>
-            </Card>
-
-            <Card>
-                <template #titleFull>
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Ressourcen</div>
-                            <h3 class="mt-1 text-lg font-semibold">Gefilterte Grundlagen</h3>
-                        </div>
-                        <Icon icon="fas fa-database" size="L" class="text-slate-500" />
-                    </div>
-                </template>
-                <div class="divide-y divide-slate-100">
-                    <div class="flex justify-between py-3 text-sm">
-                        <span class="text-slate-500">Organisation</span>
-                        <strong>{{ selectedOrganization?.name ?? 'Keine konfiguriert' }}</strong>
-                    </div>
-                    <div class="flex justify-between py-3 text-sm">
-                        <span class="text-slate-500">Liturgievorlagen</span>
-                        <strong>{{ props.availableLiturgiesCount ?? 0 }}</strong>
-                    </div>
-                    <div class="flex justify-between py-3 text-sm">
-                        <span class="text-slate-500">Verfügbare Gesangbücher</span>
-                        <strong>{{ props.availableHymnals.length }}</strong>
-                    </div>
-                    <div class="flex justify-between py-3 text-sm">
-                        <span class="text-slate-500">Lektionare</span>
-                        <strong>{{ props.availableLectionariesCount ?? 0 }}</strong>
-                    </div>
-                </div>
-            </Card>
-        </div>
+        <SettingsDiagnostics
+            :selected-organization="selectedOrganization"
+            :available-hymnals-count="props.availableHymnals.length"
+            :available-liturgies-count="props.availableLiturgiesCount"
+            :available-lectionaries-count="props.availableLectionariesCount"
+            :is-online="props.isOnline"
+            :api-configured="props.apiConfigured"
+            :connection-checking="props.connectionChecking"
+        />
     </section>
 </template>

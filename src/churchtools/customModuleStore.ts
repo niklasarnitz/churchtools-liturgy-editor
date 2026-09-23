@@ -28,6 +28,8 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
     private readonly categories = new Map<string, CustomModuleDataCategory>();
     private readonly categoryEnsures = new Map<string, Promise<CustomModuleDataCategory>>();
     private readonly values = new Map<string, CustomModuleDataValue[]>();
+    private readonly valueIndexes = new Map<string, Map<string, CustomModuleDataValue>>();
+    private readonly valuesLoadedAt = new Map<string, number>();
     private readonly valueLoads = new Map<string, Promise<CustomModuleDataValue[]>>();
     private readonly client: ChurchToolsRequestClient;
     private readonly extensionKey: string;
@@ -88,7 +90,7 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
     }
 
     async listCategories(): Promise<CustomModuleDataCategory[]> {
-        const module = await this.ensureModule();
+        const module = await this.getModule();
         return this.client.get<CustomModuleDataCategory[]>(`/custommodules/${module.id}/customdatacategories`);
     }
 
@@ -112,10 +114,18 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
                 name,
                 description,
             };
-            const category = await this.client.post<CustomModuleDataCategory>(
-                `/custommodules/${module.id}/customdatacategories`,
-                createData,
-            );
+            let category: CustomModuleDataCategory;
+            try {
+                category = await this.client.post<CustomModuleDataCategory>(
+                    `/custommodules/${module.id}/customdatacategories`,
+                    createData,
+                );
+            } catch (error) {
+                if (shorty.startsWith('liturgy-editor-user-') && toChurchToolsError(error).kind === 'forbidden') {
+                    throw new ChurchToolsError('Persönliche Bausteine können erst gespeichert werden, wenn dieses Konto im Liturgie-Editor eigene Datenkategorien anlegen darf.', { kind: 'forbidden', status: 403 });
+                }
+                throw error;
+            }
             this.categories.set(shorty, category);
             return category;
         }).finally(() => {
@@ -125,21 +135,25 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
         return operation;
     }
 
-    async listValues(categoryShorty: string): Promise<CustomModuleDataValue[]> {
+    async listValues(categoryShorty: string, refresh = false): Promise<CustomModuleDataValue[]> {
         const cached = this.values.get(categoryShorty);
-        if (cached) return cached;
+        if (cached && !refresh && Date.now() - (this.valuesLoadedAt.get(categoryShorty) ?? 0) < 10_000) return cached;
         const pending = this.valueLoads.get(categoryShorty);
         if (pending) return pending;
-        const category = await this.ensureCategory(categoryShorty);
+        const category = await this.getCategory(categoryShorty);
+        if (!category) return [];
         const module = await this.ensureModule();
-        const loadedWhileResolving = this.values.get(categoryShorty);
-        if (loadedWhileResolving) return loadedWhileResolving;
         const startedWhileResolving = this.valueLoads.get(categoryShorty);
         if (startedWhileResolving) return startedWhileResolving;
         const operation = this.client.get<CustomModuleDataValue[]>(
             `/custommodules/${module.id}/customdatacategories/${category.id}/customdatavalues`,
         ).then((values) => {
             this.values.set(categoryShorty, values);
+            this.valueIndexes.set(categoryShorty, new Map(values.flatMap((value) => {
+                const key = parseStoredRecord(value.value)?.key;
+                return typeof key === 'string' ? [[key, value] as const] : [];
+            })));
+            this.valuesLoadedAt.set(categoryShorty, Date.now());
             return values;
         }).finally(() => {
             this.valueLoads.delete(categoryShorty);
@@ -149,28 +163,40 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
     }
 
     async get<T>(key: string): Promise<T | undefined> {
-        const values = await this.listValues(this.extensionKey);
-        const value = values.find((candidate) => parseStoredRecord(candidate.value)?.key === key);
+        const categoryShorty = this.categoryForKey(key);
+        await this.listValues(categoryShorty);
+        let value = this.valueIndexes.get(categoryShorty)?.get(key);
+        // Existing installations stored personal blocks in the shared category.
+        // Read them until the next save migrates each value to its private category.
+        if (!value && categoryShorty !== this.extensionKey) {
+            await this.listValues(this.extensionKey);
+            value = this.valueIndexes.get(this.extensionKey)?.get(key);
+        }
         if (!value) return undefined;
         return parseStoredValue<T>(value.value);
     }
 
     async set<T>(key: string, data: T): Promise<void> {
-        const category = await this.ensureCategory(this.extensionKey, this.extensionName, this.extensionDescription);
+        const categoryShorty = this.categoryForKey(key);
+        const category = await this.ensureCategory(categoryShorty, categoryShorty === this.extensionKey ? this.extensionName : 'Persönliche Bausteine', this.extensionDescription);
         const module = await this.ensureModule();
-        const values = await this.listValues(this.extensionKey);
+        let values = await this.listValues(categoryShorty);
         const encoded = JSON.stringify({ key, data });
-        const existing = values.find((candidate) => {
-            const parsed = parseStoredRecord(candidate.value);
-            return parsed?.key === key;
-        });
-        if (existing) {
+        if (encoded.length > 10_000) throw new Error(`ChurchTools custom data value exceeds 10000 characters: ${key}`);
+        const existing = this.valueIndexes.get(categoryShorty)?.get(key);
+        // Immutable chunk IDs contain a UUID and cannot already exist. Only
+        // stable logical keys need a fresh lookup before a first create.
+        if (!existing && !key.includes(':chunk2:')) values = await this.listValues(categoryShorty, true);
+        const current = this.valueIndexes.get(categoryShorty)?.get(key);
+        if (current) {
             const updateData: CustomModuleDataValueUpdate = { dataCategoryId: category.id, value: encoded };
             const updated = await this.client.put<CustomModuleDataValue>(
-                `/custommodules/${module.id}/customdatacategories/${category.id}/customdatavalues/${existing.id}`,
+                `/custommodules/${module.id}/customdatacategories/${category.id}/customdatavalues/${current.id}`,
                 updateData,
             );
-            values.splice(values.indexOf(existing), 1, updated);
+            values.splice(values.indexOf(current), 1, updated);
+            this.valueIndexes.get(categoryShorty)?.set(key, updated);
+            if (categoryShorty !== this.extensionKey) await this.deleteLegacyPersonalValue(key);
             return;
         }
         const createData: CustomModuleDataValueCreate = { dataCategoryId: category.id, value: encoded };
@@ -179,20 +205,45 @@ export class ChurchToolsCustomModuleStore implements JsonStateStore {
             createData,
         );
         values.push(created);
+        this.valueIndexes.get(categoryShorty)?.set(key, created);
+        if (categoryShorty !== this.extensionKey) await this.deleteLegacyPersonalValue(key);
     }
 
     async delete(key: string): Promise<void> {
-        const category = await this.getCategory(this.extensionKey);
-        if (!category) return;
+        const categoryShorty = this.categoryForKey(key);
+        const category = await this.getCategory(categoryShorty);
+        if (!category) {
+            if (categoryShorty !== this.extensionKey) await this.deleteLegacyPersonalValue(key);
+            return;
+        }
         const module = await this.ensureModule();
-        const values = await this.listValues(this.extensionKey);
-        const existing = values.find((candidate) => parseStoredRecord(candidate.value)?.key === key);
+        const values = await this.listValues(categoryShorty);
+        const existing = this.valueIndexes.get(categoryShorty)?.get(key);
         if (existing) {
             await this.client.deleteApi<void>(
                 `/custommodules/${module.id}/customdatacategories/${category.id}/customdatavalues/${existing.id}`,
             );
             values.splice(values.indexOf(existing), 1);
+            this.valueIndexes.get(categoryShorty)?.delete(key);
         }
+        if (categoryShorty !== this.extensionKey) await this.deleteLegacyPersonalValue(key);
+    }
+
+    private categoryForKey(key: string): string {
+        const match = /^liturgy-editor:(?:manifest|chunk|chunk2):blocks:[^:]+:([1-9]\d*)(?::|$)/.exec(key);
+        return match ? `liturgy-editor-user-${match[1]}` : this.extensionKey;
+    }
+
+    private async deleteLegacyPersonalValue(key: string): Promise<void> {
+        const category = await this.getCategory(this.extensionKey);
+        if (!category) return;
+        const values = await this.listValues(this.extensionKey);
+        const existing = this.valueIndexes.get(this.extensionKey)?.get(key);
+        if (!existing) return;
+        const module = await this.ensureModule();
+        await this.client.deleteApi<void>(`/custommodules/${module.id}/customdatacategories/${category.id}/customdatavalues/${existing.id}`);
+        values.splice(values.indexOf(existing), 1);
+        this.valueIndexes.get(this.extensionKey)?.delete(key);
     }
 }
 

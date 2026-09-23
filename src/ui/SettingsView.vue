@@ -12,6 +12,7 @@ import type { ImportProgressView } from './types';
 
 const props = defineProps<{
     selectedOrganizationId?: string;
+    settingsStatus?: 'idle' | 'loading' | 'ready' | 'error';
     organizations: OrganizationDefinition[];
     availableHymnals: HymnalDefinition[];
     installed: (hymnalId: string) => HymnalImportState | undefined;
@@ -54,7 +55,10 @@ const selectedOrganization = computed(() =>
             Lesemodus: Du kannst die Extension-Konfiguration ansehen. Änderungen kann nur ein Konto mit ChurchTools-Berechtigung „churchservice / edit masterdata“ speichern.
         </div>
 
+        <div v-if="props.settingsStatus === 'idle' || props.settingsStatus === 'loading'" class="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600" role="status">Einstellungen werden geladen …</div>
+        <div v-else-if="props.settingsStatus === 'error'" class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">Die Einstellungen konnten nicht geladen werden. Bitte prüfe die ChurchTools-Verbindung und versuche es erneut.</div>
         <SettingsOrganizationSelector
+            v-else
             :selected-organization-id="props.selectedOrganizationId"
             :organizations="props.organizations"
             :busy="props.busy"
@@ -63,7 +67,7 @@ const selectedOrganization = computed(() =>
         />
 
         <!-- 2. Hymnals Installation Section -->
-        <div class="space-y-4">
+        <div v-if="!props.settingsStatus || props.settingsStatus === 'ready'" class="space-y-4">
             <div>
                 <div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Schritt 2: Gesangbücher</div>
                 <h3 class="mt-1 text-xl font-bold tracking-tight">Dazugehörige Gesangbücher</h3>

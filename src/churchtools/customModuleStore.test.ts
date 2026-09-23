@@ -4,6 +4,77 @@ import type { ChurchToolsRequestClient } from './request';
 import { ChurchToolsCustomModuleStore } from './customModuleStore';
 
 describe('ChurchToolsCustomModuleStore module lookup', () => {
+    it('does not create a category when reading absent state', async () => {
+        let posts = 0;
+        const client = {
+            get: (async (uri: string) => uri === '/custommodules'
+                ? [{ id: 17, shorty: 'liturgy-editor' }]
+                : []) as ChurchToolsRequestClient['get'],
+            post: (async () => { posts += 1; return {}; }) as ChurchToolsRequestClient['post'],
+        } as ChurchToolsRequestClient;
+        const store = new ChurchToolsCustomModuleStore(client, 'liturgy-editor');
+        await expect(store.get('missing')).resolves.toBeUndefined();
+        expect(posts).toBe(0);
+    });
+
+    it('stores personal block shards in a user-specific permission category', async () => {
+        const calls: string[] = [];
+        const categories: Array<{ id: number; customModuleId: number; shorty: string; name: string; description: string }> = [];
+        const client = {
+            get: (async (uri: string) => {
+                if (uri === '/custommodules') return [{ id: 17, shorty: 'liturgy-editor' }];
+                if (uri.endsWith('/customdatacategories')) return categories;
+                if (uri.endsWith('/customdatavalues')) return [];
+                throw new Error(uri);
+            }) as ChurchToolsRequestClient['get'],
+            post: (async (uri: string, body: Record<string, unknown>) => {
+                calls.push(uri);
+                if (uri.endsWith('/customdatacategories')) {
+                    const category = { id: 23, customModuleId: 17, shorty: String(body.shorty), name: String(body.name), description: String(body.description) };
+                    categories.push(category);
+                    return category;
+                }
+                return { id: 31, dataCategoryId: 23, value: body.value };
+            }) as ChurchToolsRequestClient['post'],
+        } as ChurchToolsRequestClient;
+        const store = new ChurchToolsCustomModuleStore(client, 'liturgy-editor');
+        await store.set('liturgy-editor:manifest:blocks:ekiba:7', { version: 2, inline: [] });
+        expect(categories[0].shorty).toBe('liturgy-editor-user-7');
+        expect(calls.some((uri) => uri.endsWith('/customdatacategories/23/customdatavalues'))).toBe(true);
+    });
+
+    it('migrates an old personal value out of the shared category on save', async () => {
+        const key = 'liturgy-editor:manifest:blocks:ekiba:7';
+        const categories = [{ id: 20, customModuleId: 17, shorty: 'liturgy-editor', name: 'Shared', description: '' }];
+        const shared = [{ id: 30, dataCategoryId: 20, value: JSON.stringify({ key, data: { version: 1, inline: ['old'] } }) }];
+        const deleted: string[] = [];
+        const client = {
+            get: (async (uri: string) => {
+                if (uri === '/custommodules') return [{ id: 17, shorty: 'liturgy-editor' }];
+                if (uri.endsWith('/customdatacategories')) return categories;
+                if (uri.endsWith('/20/customdatavalues')) return [...shared];
+                if (uri.endsWith('/21/customdatavalues')) return [];
+                throw new Error(uri);
+            }) as ChurchToolsRequestClient['get'],
+            post: (async (uri: string, body: Record<string, unknown>) => {
+                if (uri.endsWith('/customdatacategories')) {
+                    const category = { id: 21, customModuleId: 17, shorty: String(body.shorty), name: 'Private', description: '' };
+                    categories.push(category);
+                    return category;
+                }
+                return { id: 31, dataCategoryId: 21, value: String(body.value) };
+            }) as ChurchToolsRequestClient['post'],
+            deleteApi: (async (uri: string) => {
+                deleted.push(uri);
+                shared.splice(0);
+            }) as ChurchToolsRequestClient['deleteApi'],
+        } as ChurchToolsRequestClient;
+        const store = new ChurchToolsCustomModuleStore(client, 'liturgy-editor');
+        await expect(store.get(key)).resolves.toEqual({ version: 1, inline: ['old'] });
+        await store.set(key, { version: 2, inline: ['new'] });
+        expect(deleted).toEqual(['/custommodules/17/customdatacategories/20/customdatavalues/30']);
+        await expect(store.get(key)).resolves.toEqual({ version: 2, inline: ['new'] });
+    });
     it('loads all modules and resolves a hyphenated extension key by shorty', async () => {
         const requested: string[] = [];
         const client = {

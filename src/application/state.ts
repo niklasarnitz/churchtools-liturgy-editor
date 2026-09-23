@@ -1,10 +1,9 @@
 import type { JsonStateStore } from '../churchtools/customModuleStore';
 
 /**
- * ChurchTools custom data values are deliberately kept below the platform's
- * 10k value limit. Large import mappings are split into deterministic shards.
- * The manifest is itself a normal JSON value and makes recovery/diagnostics
- * possible without a second database.
+ * ChurchTools limits each custom data value to 10k characters. Shards are
+ * immutable; replacing a manifest is the only publishing step. A failed write
+ * therefore leaves the previous manifest and all of its shards readable.
  */
 export class ShardedJsonStateStore implements JsonStateStore {
     private readonly store: JsonStateStore;
@@ -25,9 +24,11 @@ export class ShardedJsonStateStore implements JsonStateStore {
         if (!manifest) return undefined;
         if (manifest.inline !== undefined) return manifest.inline as T;
         const parts: string[] = [];
-        const chunkCount = manifest.chunkCount ?? 0;
-        for (let index = 0; index < chunkCount; index += 1) {
-            const chunk = await this.store.get<ShardChunk>(this.chunkKey(key, index));
+        const chunkKeys = manifest.version === 2
+            ? manifest.chunkKeys ?? []
+            : Array.from({ length: manifest.chunkCount ?? 0 }, (_, index) => this.legacyChunkKey(key, index));
+        for (let index = 0; index < chunkKeys.length; index += 1) {
+            const chunk = await this.store.get<ShardChunk>(chunkKeys[index]);
             if (!chunk || typeof chunk.data !== 'string') throw new Error(`State shard is missing: ${key}#${index}`);
             parts.push(chunk.data);
         }
@@ -43,31 +44,45 @@ export class ShardedJsonStateStore implements JsonStateStore {
     private async write<T>(key: string, value: T): Promise<void> {
         const encoded = JSON.stringify(value);
         if (encoded === undefined) throw new Error(`State value cannot be serialized: ${key}`);
-        const previous = await this.store.get<ShardManifest>(this.manifestKey(key));
-        if (encoded.length <= this.chunkSize) {
-            await this.store.set(this.manifestKey(key), { version: 1, inline: value } satisfies ShardManifest);
-            await this.removeChunks(key, previous?.chunkCount ?? 0);
+        const manifestKey = this.manifestKey(key);
+        const previous = await this.store.get<ShardManifest>(manifestKey);
+        const inline: ShardManifest = { version: 2, inline: value };
+        if (encoded.length <= this.chunkSize && this.storedLength(manifestKey, inline) <= 10_000) {
+            await this.store.set(manifestKey, inline);
+            await this.removePreviousChunks(key, previous, []);
             return;
         }
-        const count = Math.ceil(encoded.length / this.chunkSize);
-        const chunks = Array.from(
-            { length: count },
-            (_, index) => encoded.slice(index * this.chunkSize, (index + 1) * this.chunkSize),
-        );
-        const chunkChecksums = chunks.map(checksum);
-        const manifest: ShardManifest = {
-            version: 1,
-            chunkCount: count,
-            checksum: checksum(encoded),
-            chunkChecksums,
-        };
-        for (let index = 0; index < count; index += 1) {
-            if (previous?.chunkChecksums?.[index] === chunkChecksums[index]) continue;
-            await this.store.set(this.chunkKey(key, index), { version: 1, data: chunks[index] });
+        const previousKeys = previous?.version === 2 ? previous.chunkKeys ?? [] : [];
+        const previousChecksums = previous?.version === 2 ? previous.chunkChecksums ?? [] : [];
+        const chunkKeys: string[] = [];
+        const chunkChecksums: string[] = [];
+        const stagedKeys: string[] = [];
+        let offset = 0;
+        try {
+            while (offset < encoded.length) {
+                const candidateKey = this.newChunkKey(key);
+                const size = this.nextChunkSize(encoded, offset, candidateKey);
+                const data = encoded.slice(offset, offset + size);
+                const chunkChecksum = checksum(data);
+                const index = chunkKeys.length;
+                if (previousKeys[index] && previousChecksums[index] === chunkChecksum) {
+                    chunkKeys.push(previousKeys[index]);
+                } else {
+                    await this.store.set(candidateKey, { version: 2, data });
+                    stagedKeys.push(candidateKey);
+                    chunkKeys.push(candidateKey);
+                }
+                chunkChecksums.push(chunkChecksum);
+                offset += size;
+            }
+            const manifest: ShardManifest = { version: 2, chunkKeys, checksum: checksum(encoded), chunkChecksums };
+            if (this.storedLength(manifestKey, manifest) > 10_000) throw new Error(`State manifest exceeds ChurchTools value limit: ${key}`);
+            await this.store.set(manifestKey, manifest);
+        } catch (error) {
+            await Promise.allSettled(stagedKeys.map((chunkKey) => this.store.delete(chunkKey)));
+            throw error;
         }
-        // Publish only after every referenced shard is durable.
-        await this.store.set(this.manifestKey(key), manifest);
-        if (previous?.chunkCount && previous.chunkCount > count) await this.removeChunks(key, previous.chunkCount - count, count);
+        await this.removePreviousChunks(key, previous, chunkKeys);
     }
 
     async delete(key: string): Promise<void> {
@@ -77,7 +92,7 @@ export class ShardedJsonStateStore implements JsonStateStore {
     private async remove(key: string): Promise<void> {
         const previous = await this.store.get<ShardManifest>(this.manifestKey(key));
         await this.store.delete(this.manifestKey(key));
-        await this.removeChunks(key, previous?.chunkCount ?? 0);
+        await this.removePreviousChunks(key, previous, []);
     }
 
     private async enqueue(key: string, operation: () => Promise<void>): Promise<void> {
@@ -88,15 +103,36 @@ export class ShardedJsonStateStore implements JsonStateStore {
     }
 
     private manifestKey(key: string): string { return `${this.namespace}:manifest:${key}`; }
-    private chunkKey(key: string, index: number): string { return `${this.namespace}:chunk:${key}:${index}`; }
+    private legacyChunkKey(key: string, index: number): string { return `${this.namespace}:chunk:${key}:${index}`; }
+    private newChunkKey(key: string): string { return `${this.namespace}:chunk2:${key}:${crypto.randomUUID()}`; }
+    private storedLength(key: string, data: unknown): number { return JSON.stringify({ key, data }).length; }
 
-    private async removeChunks(key: string, count: number, start = 0): Promise<void> {
-        for (let index = start; index < start + count; index += 1) await this.store.delete(this.chunkKey(key, index));
+    private nextChunkSize(encoded: string, offset: number, key: string): number {
+        let low = 0;
+        let high = Math.min(this.chunkSize, encoded.length - offset);
+        while (low < high) {
+            const middle = Math.ceil((low + high) / 2);
+            if (this.storedLength(key, { version: 2, data: encoded.slice(offset, offset + middle) }) <= 10_000) low = middle;
+            else high = middle - 1;
+        }
+        if (low === 0) throw new Error('State shard cannot fit in a ChurchTools custom data value.');
+        return low;
+    }
+
+    private async removePreviousChunks(key: string, previous: ShardManifest | undefined, retainedKeys: readonly string[]): Promise<void> {
+        if (!previous || previous.inline !== undefined) return;
+        const oldKeys = previous.version === 2
+            ? previous.chunkKeys ?? []
+            : Array.from({ length: previous.chunkCount ?? 0 }, (_, index) => this.legacyChunkKey(key, index));
+        const retained = new Set(retainedKeys);
+        for (const oldKey of oldKeys) if (!retained.has(oldKey)) await this.store.delete(oldKey);
     }
 }
 
-type ShardManifest = { version: 1; inline?: unknown; chunkCount?: number; checksum?: string; chunkChecksums?: string[] };
-type ShardChunk = { version: 1; data: string };
+type ShardManifest =
+    | { version: 1; inline?: unknown; chunkCount?: number; checksum?: string; chunkChecksums?: string[] }
+    | { version: 2; inline?: unknown; chunkKeys?: string[]; checksum?: string; chunkChecksums?: string[] };
+type ShardChunk = { version: 1 | 2; data: string };
 
 function checksum(value: string): string {
     let hash = 2_166_136_261;

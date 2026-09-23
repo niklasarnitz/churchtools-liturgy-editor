@@ -17,17 +17,19 @@ export class ChurchToolsPermissionsAdapter {
     private readonly client: ChurchToolsRequestClient;
     private globalPermissions?: NativeGlobalPermissions;
     private globalPermissionsRequest?: Promise<NativeGlobalPermissions>;
+    private permissionsLoadedAt = 0;
 
     constructor(client: ChurchToolsRequestClient) {
         this.client = client;
     }
 
     getGlobal(): Promise<NativeGlobalPermissions> {
-        if (this.globalPermissions) return Promise.resolve(this.globalPermissions);
+        if (this.globalPermissions && Date.now() - this.permissionsLoadedAt < 2 * 60_000) return Promise.resolve(this.globalPermissions);
         if (this.globalPermissionsRequest) return this.globalPermissionsRequest;
         this.globalPermissionsRequest = this.client.get<GetPermissionsGlobalResponse['data']>('/permissions/global')
             .then((permissions) => {
                 this.globalPermissions = permissions;
+                this.permissionsLoadedAt = Date.now();
                 return permissions;
             })
             .finally(() => {
@@ -39,6 +41,7 @@ export class ChurchToolsPermissionsAdapter {
     /** Reload permissions after an explicit host-side permission change. */
     invalidate(): void {
         this.globalPermissions = undefined;
+        this.permissionsLoadedAt = 0;
     }
 
     async can(moduleName: string, permission: string, dataId?: number): Promise<boolean> {

@@ -62,6 +62,12 @@ describe('useWorkspace installation settings and resource scoping', () => {
         expect(workspace.availableLectionaries).toEqual([]);
     });
 
+    it('treats a missing import state as not installed, not as a query error', async () => {
+        const workspace = createWorkspace();
+        await expect(workspace.loadImport('eg-baden')).resolves.toBeUndefined();
+        expect(workspace.error).toBeUndefined();
+    });
+
     it('scopes the Durmersheim liturgy and real hymnals without local lectionary fixtures', async () => {
         const workspace = createWorkspace();
         await workspace.saveInstallationOrganization('ekiba');

@@ -330,10 +330,11 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
 
     const loadImport = async (hymnalId: string): Promise<HymnalImportState | undefined> => {
         try {
-            importState.value = await queryClient.fetchQuery({
+            const loaded = await queryClient.fetchQuery({
                 queryKey: queryKeys().import(hymnalId),
-                queryFn: () => application.repositories.imports.load(hymnalId),
+                queryFn: async () => await application.repositories.imports.load(hymnalId) ?? null,
             });
+            importState.value = loaded ?? undefined;
             return importState.value;
         } catch (cause) {
             // A host extension can be loaded before a valid ChurchTools

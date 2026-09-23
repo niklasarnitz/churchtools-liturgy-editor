@@ -50,4 +50,12 @@ Ein lokaler Build bestätigt noch nicht, dass die Extension in einer konkreten C
 | `src/data/` | Organisationen, Liturgievorlagen und Gesangbuchkataloge |
 | `scripts/package.js` | Erstellung des Extension-ZIP |
 
+## Gespeicherter Zustand und Rechte
+
+ChurchTools begrenzt den Wert einer Custom-Module-Datenentität auf 10.000 Zeichen. Große Importstände und Ablauf-Snapshots liegen deshalb in mehreren **Datenwerten** unter einem Manifest. Neue Shards erhalten eigene IDs und werden erst nach erfolgreichem Schreiben durch das Manifest veröffentlicht. Vorhandene Manifest-Daten der Version 1 werden weiterhin gelesen und beim nächsten Speichern umgestellt. Die tatsächliche Länge des serialisierten ChurchTools-Werts wird vor jedem Schreiben geprüft.
+
+Zusätzliche **Datenkategorien** wären keine größeren Speichercontainer: Sie haben dasselbe Wertlimit und sind vor allem Berechtigungsgrenzen. Deshalb bleibt gemeinsam genutzter Installations- und Importzustand in der Extension-Kategorie. Persönliche Bausteine erhalten eine Kategorie pro Nutzer (`liturgy-editor-user-<Nutzer-ID>`). Der jeweilige Nutzer braucht zum ersten Speichern die ChurchTools-Berechtigung `create custom category` für dieses Custom Module; ChurchTools gibt dem Ersteller anschließend die Rechte auf seine Kategorie. Alte Bausteinwerte werden beim nächsten Speichern in die Nutzerkategorie migriert und aus der gemeinsamen Kategorie entfernt. Bis dahin bleiben sie dort lesbar. Für eine bestehende Installation müssen die Custom-Module-Rechte und die erfolgreiche Migration im echten Mandanten geprüft werden.
+
+Die ChurchTools-API bietet für Custom-Module-Werte keine atomare Compare-and-Set-Operation. Gleichzeitig geöffnete Sitzungen können denselben Installations- oder Importstand daher weiterhin konkurrierend ändern. Die Extension lädt Wertelisten regelmäßig neu und sucht vor dem erstmaligen Anlegen eines stabilen Schlüssels erneut; das vermindert veraltete und doppelte Einträge, ersetzt aber keine serverseitige Transaktion.
+
 Gesangbuchdaten enthalten Nummern und Titel, aber keine Liedtexte oder Noten. Für eine Weitergabe der Kataloge müssen die Rechte an den jeweiligen Quelldaten geklärt sein.

@@ -1,9 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { ChurchToolsRequestClient } from './request';
 import { ChurchToolsPermissionsAdapter } from './permissions';
 
 describe('ChurchToolsPermissionsAdapter', () => {
+    it('refreshes permissions after the cache lifetime', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-09-23T00:00:00Z'));
+            let requests = 0;
+            const client = {
+                get: (async () => {
+                    requests += 1;
+                    return { churchservice: { 'edit agenda': requests === 1 } };
+                }) as ChurchToolsRequestClient['get'],
+            } as ChurchToolsRequestClient;
+            const permissions = new ChurchToolsPermissionsAdapter(client);
+            await expect(permissions.can('churchservice', 'edit agenda')).resolves.toBe(true);
+            vi.advanceTimersByTime(2 * 60_000);
+            await expect(permissions.can('churchservice', 'edit agenda')).resolves.toBe(false);
+            expect(requests).toBe(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
     it('shares one global-permission request across event checks', async () => {
         let requests = 0;
         let resolveRequest: ((value: unknown) => void) | undefined;

@@ -65,6 +65,8 @@ export class LiturgyEditorApplication {
     private readonly state: JsonStateStore;
     private readonly synchronizer: ManagedAgendaSynchronizer;
     private readonly now: () => string;
+    private searchImportStates?: Promise<HymnalImportState[]>;
+    private searchImportStatesLoadedAt = 0;
 
     constructor(deps: ApplicationDependencies) {
         this.deps = deps;
@@ -175,17 +177,22 @@ export class LiturgyEditorApplication {
 
     async installHymnal(hymnalId: string, options: { categoryId?: number; categoryName?: string; concurrency?: number; onProgress?: (progress: ImportProgress) => void | Promise<void> } = {}): Promise<HymnalOperationResult> {
         await this.deps.permissions.assertSongWrite();
+        this.searchImportStates = undefined;
         const hymnal = this.requireHymnal(hymnalId);
         const progress: ImportProgress[] = [];
         const importer = new HymnalImporter(this.deps.songs, this.repositories.imports);
-        const state = await importer.import(hymnal, {
-            ...this.deps.importOptions,
-            ...options,
-            categoryName: options.categoryName ?? hymnal.shortName,
-            now: this.now,
-            onProgress: async (entry) => { progress.push(entry); await options.onProgress?.(entry); },
-        });
-        return { state, progress };
+        try {
+            const state = await importer.import(hymnal, {
+                ...this.deps.importOptions,
+                ...options,
+                categoryName: options.categoryName ?? hymnal.shortName,
+                now: this.now,
+                onProgress: async (entry) => { progress.push(entry); await options.onProgress?.(entry); },
+            });
+            return { state, progress };
+        } finally {
+            this.searchImportStates = undefined;
+        }
     }
 
     updateHymnal(hymnalId: string, options: Parameters<LiturgyEditorApplication['installHymnal']>[1] = {}): Promise<HymnalOperationResult> {
@@ -214,13 +221,17 @@ export class LiturgyEditorApplication {
         const uninstaller = new HymnalUninstaller(this.deps.songs, this.repositories.imports, usageChecker);
         const states = await this.loadImportStates();
         const plan = await uninstaller.dryRun(hymnalId, states.filter((state) => state.hymnalId !== hymnalId));
-        const state = await uninstaller.uninstall(hymnalId, {
-            otherStates: states.filter((entry) => entry.hymnalId !== hymnalId),
-            now: this.now,
-            plan,
-            onProgress: options.onProgress,
-        });
-        return { plan, state };
+        try {
+            const state = await uninstaller.uninstall(hymnalId, {
+                otherStates: states.filter((entry) => entry.hymnalId !== hymnalId),
+                now: this.now,
+                plan,
+                onProgress: options.onProgress,
+            });
+            return { plan, state };
+        } finally {
+            this.searchImportStates = undefined;
+        }
     }
 
     async suggestLiturgicalDay(input: { date: string | Date; organizationId: string; liturgyId?: string; lectionaryId?: string; overrides?: LiturgicalDayOverrides }): Promise<LiturgicalSuggestion> {
@@ -236,7 +247,12 @@ export class LiturgyEditorApplication {
         await this.deps.permissions.assertSongRead();
         const limit = options.limit ?? 50;
         const normalized = query.trim().toLocaleLowerCase();
-        const imported = await this.loadImportStates();
+        const native = await this.deps.songs.list({ query: query.trim() || undefined, include: ['arrangements'], limit });
+        const byId = new Map<number, NativeSong>();
+        for (const song of native) byId.set(song.id, song);
+        // Import mappings add hymn numbers to native results. Only a nonempty
+        // search may request further IDs, and only up to the remaining limit.
+        const imported = await this.getSearchImportStates();
         const staticMatches = new Map<number, { hymnalId: string; hymnalName: string; number: string }>();
         for (const state of imported) {
             const hymnal = this.resources.hymnals.find((candidate) => candidate.id === state.hymnalId);
@@ -250,10 +266,9 @@ export class LiturgyEditorApplication {
                 }
             }
         }
-        const native = await this.deps.songs.list({ query: query.trim() || undefined, include: ['arrangements'], limit });
-        const byId = new Map<number, NativeSong>();
-        for (const song of native) byId.set(song.id, song);
-        const missingIds = [...staticMatches.keys()].filter((songId) => !byId.has(songId));
+        const missingIds = normalized
+            ? [...staticMatches.keys()].filter((songId) => !byId.has(songId)).slice(0, Math.max(0, limit - byId.size))
+            : [];
         for (let offset = 0; offset < missingIds.length; offset += 200) {
             const songs = await this.deps.songs.list({
                 ids: missingIds.slice(offset, offset + 200),
@@ -392,6 +407,18 @@ export class LiturgyEditorApplication {
         const states: HymnalImportState[] = [];
         for (const hymnal of this.resources.hymnals) { const state = await this.repositories.imports.load(hymnal.id); if (state) states.push(state); }
         return states;
+    }
+
+    private getSearchImportStates(): Promise<HymnalImportState[]> {
+        if (Date.now() - this.searchImportStatesLoadedAt >= 60_000) this.searchImportStates = undefined;
+        if (!this.searchImportStates) {
+            this.searchImportStatesLoadedAt = Date.now();
+            this.searchImportStates = this.loadImportStates().catch((error) => {
+                this.searchImportStates = undefined;
+                throw error;
+            });
+        }
+        return this.searchImportStates;
     }
 
     private async createUsageChecker(): Promise<HymnalUsageChecker> {

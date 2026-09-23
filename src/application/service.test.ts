@@ -8,6 +8,7 @@ import { testBadenLiturgy, testResourceRegistry } from '../test-fixtures/resourc
 import { LiturgyEditorApplication } from './service';
 import { agendaFingerprint } from '../domain/reconciliation/fingerprint';
 import { instantiateNode, type SavedBlock } from '../domain/liturgies/blocks';
+import type { HymnalImportState } from '../domain/imports/types';
 
 class MemoryStore implements JsonStateStore {
     values = new Map<string, unknown>();
@@ -49,6 +50,32 @@ function usageChecker(app: LiturgyEditorApplication): Promise<HymnalUsageChecker
 }
 
 describe('LiturgyEditorApplication workflow', () => {
+    it('bounds native song lookups during imported hymnal searches', async () => {
+        const hymnal = testResourceRegistry.hymnals.find((item) => item.id === 'eg-baden')!;
+        const requests: Array<{ query?: string; ids?: number[]; limit?: number }> = [];
+        const app = new LiturgyEditorApplication(dependencies({ songs: {
+            list: async (input: { query?: string; ids?: number[]; limit?: number }) => {
+                requests.push(input);
+                return input.query ? [] : [{ id: 1, name: 'Native Song' }];
+            },
+        } }));
+        const timestamp = '2026-09-23T00:00:00Z';
+        const state: HymnalImportState = {
+            operationId: 'test', hymnalId: hymnal.id, hymnalVersion: hymnal.version,
+            status: 'completed', total: hymnal.songs.length, completed: hymnal.songs.length, failed: 0,
+            mappings: Object.fromEntries(hymnal.songs.map((song, index) => [song.id, {
+                hymnalSongId: song.id, churchToolsSongId: index + 1000,
+                importedFingerprint: 'test', hymnalVersion: hymnal.version, createdAt: timestamp, updatedAt: timestamp,
+            }])), failures: [], startedAt: timestamp, updatedAt: timestamp,
+        };
+        await app.repositories.imports.save(state);
+
+        await app.searchSongs('', { limit: 200 });
+        expect(requests).toHaveLength(1);
+        await app.searchSongs(hymnal.shortName, { limit: 50 });
+        expect(requests).toHaveLength(3);
+        expect(requests[2].ids?.length).toBeLessThanOrEqual(50);
+    });
     it('persists independently duplicated blocks in the managed agenda snapshot', async () => {
         const app = new LiturgyEditorApplication(dependencies());
         const source = { id: 'block', type: 'serviceBlock' as const, blockKey: 'festival', label: 'Festteil', nodes: [

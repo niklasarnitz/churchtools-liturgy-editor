@@ -364,7 +364,7 @@ onMounted(() => { void load().catch(() => undefined); });
                 <div class="mb-5 flex gap-2 overflow-x-auto lg:hidden"><button v-for="item in sectionItems" :key="item.key" type="button" :class="['whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium', activeSection === item.key ? 'bg-accent-b-bright text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200']" @click="navigateTo(item.key)">{{ item.label }}</button></div>
                 <div v-if="workspace.error" class="mb-6 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="status"><Icon icon="fas fa-circle-exclamation" size="S" /><span class="min-w-0 flex-1">{{ workspace.error }}</span><Button label="Erneut versuchen" size="S" :outlined="true" @click="load" /></div>
 
-                <div v-if="!workspace.installationSettings.organizationId && activeSection !== 'settings'" class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900" role="status">
+                <div v-if="workspace.settingsStatus === 'ready' && !workspace.installationSettings.organizationId && activeSection !== 'settings'" class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900" role="status">
                     <div class="flex items-start gap-3">
                         <Icon icon="fas fa-circle-exclamation" size="S" class="mt-0.5 text-amber-700" />
                         <div class="min-w-0 flex-1">
@@ -424,7 +424,8 @@ onMounted(() => { void load().catch(() => undefined); });
                             <h2 class="mt-2 text-2xl font-bold tracking-tight">Liturgien</h2>
                             <p class="mt-2 text-sm text-slate-500">Wähle eine Vorlage nach Gottesdiensttyp und Tradition.</p>
                         </div>
-                        <div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                        <div v-if="workspace.settingsStatus === 'error'" class="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800">Die Extension-Konfiguration konnte nicht geladen werden. Bitte versuche es erneut.</div>
+                        <div v-else-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
                             <p>Kein Kirchenkörper festgelegt. Bitte wähle in den Einstellungen einen Kirchenkörper aus.</p>
                             <div class="mt-3">
                                 <Button v-if="canManageSettings" label="Kirchenkörper in den Einstellungen auswählen" icon="fas fa-sliders" size="S" @click="activeSection = 'settings'" />
@@ -441,7 +442,8 @@ onMounted(() => { void load().catch(() => undefined); });
                             <p class="mt-2 text-sm text-slate-500">Installierte Lieder bleiben native ChurchTools-Songs und sind in allen normalen ChurchTools-Oberflächen verfügbar.</p>
                         </div>
                         <div v-if="uninstallReport" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><Icon icon="fas fa-shield-check" size="S" /> Deinstallation abgeschlossen: {{ uninstallReport.removedCount }} sicher entfernt<span v-if="uninstallReport.retainedCount">, {{ uninstallReport.retainedCount }} erhalten</span>.</div>
-                        <div v-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                        <div v-if="workspace.settingsStatus === 'error'" class="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800">Die Extension-Konfiguration konnte nicht geladen werden. Bitte versuche es erneut.</div>
+                        <div v-else-if="!workspace.installationSettings.organizationId" class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
                             <p>Kein Kirchenkörper festgelegt. Bitte wähle in den Einstellungen einen Kirchenkörper aus, um die zugehörigen Gesangbücher zu laden.</p>
                             <div class="mt-3">
                                 <Button v-if="canManageSettings" label="Kirchenkörper in den Einstellungen auswählen" icon="fas fa-sliders" size="S" @click="activeSection = 'settings'" />
@@ -454,6 +456,7 @@ onMounted(() => { void load().catch(() => undefined); });
                     <section v-else class="space-y-6">
                         <SettingsView
                             :selected-organization-id="workspace.installationSettings.organizationId"
+                            :settings-status="workspace.settingsStatus"
                             :organizations="resourceRegistry.organizations"
                             :available-hymnals="workspace.availableHymnals"
                             :installed="findState"

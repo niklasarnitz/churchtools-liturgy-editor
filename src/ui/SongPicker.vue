@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { Button, Card, Icon, Input, Textarea } from './styleguide';
+import { Button, Card, Icon, Input, SelectDropdown, Textarea } from './styleguide';
 import { computed, ref, useId, watch } from 'vue';
-
 import type { SongSlotValue } from '../domain/agenda-generation';
 import type { WorkspaceArrangement, WorkspaceSong } from './types';
 
@@ -39,6 +38,13 @@ const selected = computed(() => {
     return props.songs.find((song) => song.id === props.modelValue?.songId)
         ?? (chosenSong.value?.id === props.modelValue.songId ? chosenSong.value : undefined);
 });
+const arrangementOptions = computed(() => [
+    { id: '', name: 'Kein Arrangement' },
+    ...(selected.value?.arrangements ?? []).map((arrangement) => ({
+        id: arrangement.id,
+        name: `${arrangement.name || `Arrangement ${arrangement.id}`}${arrangement.isDefault ? ' (Standard)' : ''}`,
+    })),
+]);
 
 const displayValue = computed(() => {
     const song = selected.value;
@@ -165,11 +171,16 @@ watch(() => props.modelValue?.arrangementId, (id) => {
             <Button aria-label="Lied entfernen" :icon="'fas fa-xmark'" :text="true" :color="'basic'" size="S" @click="clear" />
         </div>
         <div v-if="modelValue" class="mt-2">
-            <label class="mb-1.5 block text-xs font-bold text-[#5e6974]" :for="`${pickerId}-arrangement`">Arrangement</label>
-            <select :id="`${pickerId}-arrangement`" class="mb-2 min-h-9 w-full rounded-md border border-[#cfd6dc] bg-white px-2 text-sm" :value="selectedArrangementId ?? ''" @change="updateArrangement(($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null)">
-                <option value="">Kein Arrangement</option>
-                <option v-for="arrangement in selected?.arrangements ?? []" :key="arrangement.id" :value="arrangement.id">{{ arrangement.name || `Arrangement ${arrangement.id}` }}{{ arrangement.isDefault ? ' (Standard)' : '' }}</option>
-            </select>
+            <SelectDropdown
+                :id="`${pickerId}-arrangement`"
+                class="mb-2"
+                label="Arrangement"
+                :model-value="selectedArrangementId ?? ''"
+                :options="arrangementOptions"
+                :emit-id="true"
+                :clear="false"
+                @update:model-value="updateArrangement($event ? Number($event) : null)"
+            />
             <details v-if="canCreateArrangements" class="mb-2 rounded-md border border-[#e1e6ea] px-2.5 py-2">
                 <summary class="cursor-pointer text-xs font-semibold text-[#4b5d79]">Neues Arrangement mit Strophen anlegen</summary>
                 <div class="mt-2 flex gap-2">

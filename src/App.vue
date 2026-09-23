@@ -5,12 +5,13 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import type { HymnalDefinition } from './data/hymnals';
 import type { LiturgyDefinition } from './data/liturgies';
 import { useWorkspace } from './ui/useWorkspace';
-import { serviceStatusLabels, type AgendaDriftView, type WorkspaceEvent } from './ui/types';
+import type { AgendaDriftView, WorkspaceEvent } from './ui/types';
 import type { ExtensionPoint } from './ui/context';
 import HymnalCatalog from './ui/HymnalCatalog.vue';
 import LiturgyLibrary from './ui/LiturgyLibrary.vue';
 import ServiceEditor from './ui/ServiceEditor.vue';
 import SettingsView from './ui/SettingsView.vue';
+import ServiceList from './ui/ServiceList.vue';
 import { formatScriptureReference } from './domain/lectionary';
 import { resourceRegistry } from './data/registry';
 import type { HymnalImportState } from './domain/imports';
@@ -69,7 +70,6 @@ const sectionItems = computed(() => props.extensionPoint === 'admin'
       ]);
 
 const formatDate = (date: string) => new Date(date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-const eventStatus = (event: WorkspaceEvent) => serviceStatusLabels[event.status];
 const findState = (id: string) => importStates[id];
 
 const organizationOptions = computed(() => [
@@ -395,26 +395,21 @@ onMounted(() => { void load().catch(() => undefined); });
                 </template>
 
                 <template v-else>
-                    <section v-if="activeSection === 'services'" class="space-y-6">
-                        <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">Sonntage und Feiertage</div><h2 class="mt-2 text-2xl font-bold tracking-tight">Gottesdienste</h2><p class="mt-2 text-sm text-slate-500">{{ canWriteAgenda ? 'Wähle einen Gottesdienst aus, um den Ablauf zu bearbeiten.' : 'Lesemodus: Du kannst Abläufe ansehen. Zum Bearbeiten ist ChurchTools-Berechtigung „churchservice / edit agenda“ erforderlich.' }}</p></div><div class="flex flex-wrap items-end gap-3"><label class="grid gap-1 text-xs font-medium text-slate-600">Gottesdienste ab<input type="date" :value="workspace.eventFrom" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" @change="workspace.setEventFrom(($event.target as HTMLInputElement).value)" /></label><Button label="Aktualisieren" icon="fas fa-rotate-right" :outlined="true" :loading="workspace.eventStatus === 'loading'" @click="workspace.refreshEvents()" /></div></div>
-                        <div v-if="workspace.eventStatus === 'loading'"><LoadingMessage message="Gottesdienste werden geladen …" /></div>
-                        <div v-else-if="workspace.eventStatus === 'error'"><EmptyState title="Gottesdienste konnten nicht geladen werden" icon="fas fa-circle-exclamation"><Button label="Erneut versuchen" icon="fas fa-rotate-right" :outlined="true" @click="workspace.refreshEvents()" /></EmptyState></div>
-                        <div v-else-if="workspace.events.length === 0"><EmptyState title="Keine Gottesdienste ab diesem Datum gefunden" icon="fas fa-calendar-days"><Button label="Gottesdienstliste aktualisieren" icon="fas fa-rotate-right" :outlined="true" @click="workspace.refreshEvents()" /></EmptyState></div>
-                        <div v-else class="grid gap-4">
-                            <Card v-for="event in workspace.events" :key="event.id">
-                                <template #full>
-                                    <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center"><div class="flex shrink-0 flex-col border-b border-slate-200 pb-4 sm:w-24 sm:border-b-0 sm:border-r sm:pb-0"><strong class="text-lg font-bold">{{ formatDate(event.startDate).split(' ')[0] }}</strong><span class="text-sm text-slate-500">{{ formatDate(event.startDate).replace(`${formatDate(event.startDate).split(' ')[0]} `, '') }}</span></div>
-                                    <div class="min-w-0 flex-1"><div class="text-xs font-semibold uppercase tracking-widest text-accent-primary">{{ event.calendar?.title ?? 'Gottesdienst' }}</div><h3 class="mt-1 text-lg font-semibold">{{ event.name }}</h3><p class="mt-1 text-sm text-slate-500">{{ new Date(event.startDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }} Uhr · {{ event.isCanceled ? 'Abgesagt' : 'Geplant' }}</p></div>
-                                    <div class="flex flex-col items-stretch gap-3 sm:items-end"><span class="flex items-center gap-1.5 self-start rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"><Icon v-if="event.status === 'loading'" icon="fas fa-spinner fa-spin" size="S" />{{ eventStatus(event) }}</span><Button :label="canUseEditor && event.canEditAgenda ? (event.status === 'no-agenda' ? 'Liturgie erstellen' : event.status === 'managed' ? 'Ablauf prüfen' : 'Liturgie bearbeiten') : 'Ablauf ansehen'" icon="fas fa-arrow-right" size="S" :outlined="!canUseEditor || !event.canEditAgenda" @click="openEvent(event)" /></div></div>
-                                </template>
-                            </Card>
-                            <nav class="flex items-center justify-center gap-3 pt-2" aria-label="Seitennavigation für Gottesdienste">
-                                <Button label="Zurück" icon="fas fa-arrow-left" size="S" :outlined="true" :disabled="workspace.eventPage === 1 || workspace.eventStatus === 'loading'" @click="workspace.loadPreviousEvents" />
-                                <span class="min-w-20 text-center text-sm font-medium text-slate-600">Seite {{ workspace.eventPage }}</span>
-                                <Button label="Weiter" icon-after="fas fa-arrow-right" size="S" :outlined="true" :disabled="!workspace.eventHasNextPage || workspace.eventStatus === 'loading'" @click="workspace.loadNextEvents" />
-                            </nav>
-                        </div>
-                    </section>
+                    <ServiceList
+                        v-if="activeSection === 'services'"
+                        :events="workspace.events"
+                        :event-from="workspace.eventFrom"
+                        :event-status="workspace.eventStatus"
+                        :event-page="workspace.eventPage"
+                        :event-has-next-page="workspace.eventHasNextPage"
+                        :can-write-agenda="canWriteAgenda"
+                        :can-use-editor="canUseEditor"
+                        @set-event-from="workspace.setEventFrom"
+                        @refresh="workspace.refreshEvents()"
+                        @previous="workspace.loadPreviousEvents()"
+                        @next="workspace.loadNextEvents()"
+                        @open="openEvent"
+                    />
 
                     <section v-else-if="activeSection === 'liturgies'" class="space-y-6">
                         <div>

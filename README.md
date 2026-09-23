@@ -25,7 +25,7 @@ In `.env` mindestens `VITE_KEY` und für eine echte Instanz `VITE_BASE_URL` setz
 | `VITE_KEY` | In ChurchTools registrierter Extension-Key; wird auch für den Build-Pfad verwendet. |
 | `VITE_BASE_URL` | ChurchTools-URL für die lokale Entwicklung. Im eingebetteten Betrieb wird `window.settings.base_url` verwendet. |
 | `VITE_USERNAME`, `VITE_PASSWORD` | Optionaler Login für die lokale Entwicklung. Nur in der ignorierten `.env` verwenden und vor einem Produktionsbuild entfernen. |
-| `VITE_LECTIONAR_API_URL` | Optionaler Dienst für Kirchenjahr-Vorschläge über `/api/church-year`. Ohne URL gibt es keine Vorschläge von diesem Dienst. |
+| `VITE_LECTIONAR_API_URL` | Optionaler Dienst für Kirchenjahr-Vorschläge über `/api/church-year`. Ohne URL gibt es keine Vorschläge von diesem Dienst. Hier kann `https://lektionar.arnitz.org` verwendet werden. |
 
 ## Prüfen und paketieren
 

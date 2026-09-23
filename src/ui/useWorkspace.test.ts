@@ -1,3 +1,4 @@
+import { effectScope } from 'vue';
 import { describe, expect, it } from 'vitest';
 import { useWorkspace } from './useWorkspace';
 import { resourceRegistry } from '../data/registry';
@@ -24,7 +25,7 @@ const testEvent: WorkspaceEvent = {
 
 const createWorkspace = () => {
     const values = new Map<string, unknown>();
-    return useWorkspace({
+    return effectScope().run(() => useWorkspace({
         permissions: new ChurchToolsPermissionsAdapter({
             get: async () => ({ churchservice: { 'edit masterdata': true, 'edit agenda': true } }),
             post: async () => ({}),
@@ -36,12 +37,12 @@ const createWorkspace = () => {
             async set<T>(key: string, value: T) { values.set(key, value); },
             async delete(key: string) { values.delete(key); },
         },
-    });
+    }))!;
 };
 
 describe('useWorkspace connection status', () => {
     it('does not report online before a successful request, even when a base URL is configured', () => {
-        const workspace = useWorkspace({ baseUrl: 'https://churchtools.example' });
+        const workspace = effectScope().run(() => useWorkspace({ baseUrl: 'https://churchtools.example' }))!;
 
         expect(workspace.apiConfigured).toBe(true);
         expect(workspace.isOnline).toBe(false);

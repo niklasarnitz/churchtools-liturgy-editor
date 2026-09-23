@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue';
 import type { GetWhoamiResponse } from '@churchtools/api-types';
-import type { QueryClient } from '@tanstack/vue-query';
+import { useMutation, type QueryClient } from '@tanstack/vue-query';
 
 import { ChurchToolsAgendasAdapter, ChurchToolsClientAdapter, ChurchToolsCustomModuleStore, ChurchToolsEventsAdapter, ChurchToolsPermissionsAdapter, ChurchToolsSongsAdapter, type NativeAgenda } from '../churchtools';
 import { userFacingChurchToolsMessage } from '../churchtools/errors';
@@ -16,7 +16,7 @@ import type { LiturgyDefinition } from '../data/liturgies';
 import type { ManagedAgenda } from '../domain/managed-agendas';
 import type { SavedBlock } from '../domain/liturgies/blocks';
 import type { WorkspaceEvent, WorkspaceSong, WorkspaceStatus, ImportProgressView, AgendaDriftView } from './types';
-import { createWorkspaceQueryClient, executeMutation } from './query';
+import { createWorkspaceQueryClient } from './query';
 import { workspaceQueryKeys } from './workspaceQueryKeys';
 
 const extensionKey = import.meta.env.VITE_KEY || 'liturgy-editor';
@@ -71,6 +71,28 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const eventFrom = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     let eventPageFrom = eventFrom.value;
     const notify = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => options.notify?.(message, type);
+    const updateSettingsMutation = useMutation({
+        mutationKey: ['update-installation-settings'],
+        mutationFn: (organizationId: string | undefined) => application.updateInstallationSettings({ organizationId }),
+    }, queryClient);
+    const installHymnalMutation = useMutation({
+        mutationKey: ['install-hymnal'],
+        mutationFn: (hymnalId: string) => application.installHymnal(hymnalId, {
+            onProgress: (progress) => {
+                importProgress.value = { operation: 'install', hymnalId, completed: progress.completed, failed: progress.failed, total: progress.total, percent: progress.percent, status: progress.status };
+            },
+        }),
+    }, queryClient);
+    const uninstallHymnalMutation = useMutation({
+        mutationKey: ['uninstall-hymnal'],
+        mutationFn: (hymnalId: string) => application.uninstallHymnal(hymnalId, {
+            confirmed: true,
+            onProgress: (progress) => {
+                importProgress.value = { operation: 'uninstall', hymnalId, completed: progress.completed, failed: progress.failed, total: progress.total, percent: progress.percent, status: progress.status };
+            },
+        }),
+    }, queryClient);
+
 
     const loadCapabilities = async (): Promise<void> => {
         try {
@@ -109,12 +131,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
     const saveInstallationOrganization = async (organizationId?: string): Promise<InstallationSettings> => {
         operationBusy.value = true;
         try {
-            const updated = await executeMutation(
-                queryClient,
-                ['update-installation-settings'],
-                (nextOrganizationId: string | undefined) => application.updateInstallationSettings({ organizationId: nextOrganizationId }),
-                organizationId,
-            );
+            const updated = await updateSettingsMutation.mutateAsync(organizationId);
             queryClient.setQueryData(queryKeys().settings, updated);
             await queryClient.invalidateQueries({ queryKey: queryKeys().imports() });
             installationSettings.value = updated;
@@ -269,16 +286,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         operationBusy.value = true;
         importProgress.value = { operation: 'install', hymnalId: hymnal.id, completed: 0, failed: 0, total: hymnal.songs.length, percent: 0, status: 'pending' };
         try {
-            const result = await executeMutation(
-                queryClient,
-                ['install-hymnal', hymnal.id],
-                (hymnalId: string) => application.installHymnal(hymnalId, {
-                    onProgress: (progress) => {
-                        importProgress.value = { operation: 'install', hymnalId, completed: progress.completed, failed: progress.failed, total: progress.total, percent: progress.percent, status: progress.status };
-                    },
-                }),
-                hymnal.id,
-            );
+            const result = await installHymnalMutation.mutateAsync(hymnal.id);
             importState.value = result.state;
             importProgress.value = { operation: 'install', hymnalId: hymnal.id, completed: result.state.completed, failed: result.state.failed, total: result.state.total, percent: result.state.total ? Math.round(((result.state.completed + result.state.failed) / result.state.total) * 100) : 100, status: result.state.status };
             queryClient.setQueryData(queryKeys().import(hymnal.id), result.state);
@@ -297,17 +305,7 @@ export const useWorkspace = (options: WorkspaceOptions = {}) => {
         operationBusy.value = true;
         importProgress.value = { operation: 'uninstall', hymnalId, completed: 0, failed: 0, total: 0, percent: 0, status: 'pending' };
         try {
-            const result = await executeMutation(
-                queryClient,
-                ['uninstall-hymnal', hymnalId],
-                (id: string) => application.uninstallHymnal(id, {
-                    confirmed: true,
-                    onProgress: (progress) => {
-                        importProgress.value = { operation: 'uninstall', hymnalId: id, completed: progress.completed, failed: progress.failed, total: progress.total, percent: progress.percent, status: progress.status };
-                    },
-                }),
-                hymnalId,
-            );
+            const result = await uninstallHymnalMutation.mutateAsync(hymnalId);
             importState.value = await application.repositories.imports.load(hymnalId);
             if (importState.value) {
                 queryClient.setQueryData(queryKeys().import(hymnalId), importState.value);
